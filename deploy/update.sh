@@ -26,9 +26,27 @@ SERVICES=(
     movie-handler-telegram.service
 )
 
-UV="${UV:-/usr/local/bin/uv}"
 BRANCH="${BRANCH:-main}"
 RESTART=0
+
+# Resolve uv: explicit UV env var > PATH > common install locations.
+if [[ -n "${UV:-}" ]]; then
+    :
+elif UV="$(command -v uv 2>/dev/null)" && [[ -n "$UV" ]]; then
+    :
+else
+    for candidate in \
+        "$HOME/.local/bin/uv" \
+        /usr/local/bin/uv \
+        /usr/bin/uv \
+        /opt/uv/bin/uv
+    do
+        if [[ -x "$candidate" ]]; then
+            UV="$candidate"
+            break
+        fi
+    done
+fi
 
 for arg in "$@"; do
     case "$arg" in
@@ -49,8 +67,9 @@ if [[ "$(id -un)" != "movie" ]]; then
     exit 1
 fi
 
-if ! command -v "$UV" >/dev/null 2>&1; then
-    echo "uv not found at $UV — set UV=/path/to/uv and retry" >&2
+if [[ -z "${UV:-}" ]] || ! [[ -x "$UV" ]]; then
+    echo "uv not found — install it for user 'movie' (e.g. 'curl -LsSf https://astral.sh/uv/install.sh | sh')" >&2
+    echo "or set UV=/path/to/uv before running this script" >&2
     exit 1
 fi
 
