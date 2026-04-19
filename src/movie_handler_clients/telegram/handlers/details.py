@@ -11,7 +11,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 from ...core.formatters import (
     format_details,
     format_search_item,
-    format_torrent_row,
+    format_torrent_list,
     format_trailer_caption,
 )
 from ...core.i18n import t
@@ -166,9 +166,9 @@ async def on_download(
         return
 
     header = t("download.list_header", query=query)
-    lines = [header] + [format_torrent_row(i, r) for i, r in enumerate(results, start=1)]
+    body = format_torrent_list(results)
     await cq.message.answer(
-        "\n".join(lines),
+        f"{header}\n{body}",
         parse_mode="HTML",
         reply_markup=torrent_list_keyboard(results),
         disable_web_page_preview=True,

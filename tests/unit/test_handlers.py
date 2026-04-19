@@ -291,11 +291,18 @@ async def test_download_callback_lists_torrents() -> None:
     torrent.search_torrents.assert_awaited_once_with("Дюна 2021", limit=10, tg_user_id=42)
     cq.message.answer.assert_awaited_once()
     body = cq.message.answer.call_args.args[0]
-    assert "Dune (2021) 1080p HDR" in body
-    # Buttons carry quality / size / HDR / seeders.
+    # Common prefix "Dune (2021)" is lifted out; rows show only the diff.
+    assert "<i>Dune (2021)</i>" in body
+    assert "1080p HDR" in body
+    assert "720p" in body
+    assert "<code>#1</code>" in body
+    # Buttons carry ID / size-bar / size / quality / HDR / seeders.
     kb = cq.message.answer.call_args.kwargs["reply_markup"].inline_keyboard
     labels = [row[0].text for row in kb]
-    assert any("1080p" in lbl and "HDR" in lbl and "🌱1234" in lbl for lbl in labels)
+    assert any(
+        "#1" in lbl and "1080p" in lbl and "HDR" in lbl and "🌱1234" in lbl for lbl in labels
+    )
+    assert any("|" in lbl for lbl in labels)
 
 
 async def test_download_callback_surfaces_captcha() -> None:

@@ -30,31 +30,41 @@ def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> In
 
 
 def torrent_list_keyboard(results: list[dict[str, object]]) -> InlineKeyboardMarkup:
-    """One button per torrent — ``quality • size • HDR? • 🌱seeders``.
+    """One button per torrent.
 
-    Telegram button labels are capped at 64 characters; we keep the
-    row short and rely on the text message above for the full title.
+    Layout: ``#ID  | • SIZE • QUALITY • HDR • 🌱SEEDS``. The leading bar
+    (``|``, ``||``, ``|||`` …, one per 10 GB) gives a visual size-comparison
+    column; Telegram inline buttons can't be left-aligned, but the bar
+    plus a fixed-width ID badge creates a pseudo-column effect.
     """
     rows: list[list[InlineKeyboardButton]] = []
     for r in results:
         topic_id = r.get("topic_id")
         if not isinstance(topic_id, int):
             continue
-        parts: list[str] = []
+        parts: list[str] = [f"#{topic_id}"]
+        size_b = r.get("size_bytes")
+        if isinstance(size_b, int) and size_b > 0:
+            parts.append(_size_bar(size_b))
+            parts.append(_human_size(size_b))
         quality = r.get("quality")
         if quality:
             parts.append(str(quality))
-        size_b = r.get("size_bytes")
-        if isinstance(size_b, int) and size_b > 0:
-            parts.append(_human_size(size_b))
         if r.get("hdr"):
             parts.append("HDR")
         seeders = r.get("seeders")
         if isinstance(seeders, int):
             parts.append(f"🌱{seeders}")
-        label = " • ".join(parts) or f"#{topic_id}"
+        label = " • ".join(parts)
         rows.append([InlineKeyboardButton(text=label[:64], callback_data=f"tor:{topic_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _size_bar(n: int) -> str:
+    """One ``|`` per full 10 GB (1–6). Sub-10GB still gets one bar so the
+    column is never empty; 50 GB+ capped at six so buttons stay short."""
+    gb = n / 1024**3
+    return "|" * max(1, min(6, int(gb // 10) + 1))
 
 
 def _human_size(n: int) -> str:

@@ -125,34 +125,40 @@ def format_details(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def format_torrent_row(index: int, row: dict[str, Any]) -> str:
-    """One line in the torrent pick-list: ``N. Title — quality • size • 🌱seeders``.
+def format_torrent_list(results: list[dict[str, Any]]) -> str:
+    """Build the full HTML body for the torrent pick-list.
 
-    Detail hints (quality / HDR / size / seeders) also appear on the button
-    below; duplicating them in the list text gives the user context once
-    the keyboard row has been tapped and the button text scrolled off.
+    Layout: optional italic "common prefix" line (what all releases share,
+    to avoid noise), then one line per release: ``<code>#ID</code> · <a>diff</a>``.
+    The quality/size/HDR/seeders bits are not duplicated here — they live
+    on the keyboard button beneath each row.
     """
-    title = escape(str(row.get("title") or f"#{row.get('topic_id')}"))
-    bits: list[str] = []
-    quality = row.get("quality")
-    if quality:
-        bits.append(escape(str(quality)))
-    size_b = row.get("size_bytes")
-    if isinstance(size_b, int) and size_b > 0:
-        bits.append(_human_size_small(size_b))
-    if row.get("hdr"):
-        bits.append("HDR")
-    seeders = row.get("seeders")
-    if isinstance(seeders, int):
-        bits.append(f"🌱 {seeders}")
-    tail = " • ".join(bits)
-    line = f"{index}. <b>{title}</b>"
-    if tail:
-        line += f"\n    {tail}"
-    return line
+    titles = [str(r.get("title") or "") for r in results]
+    common = _common_prefix_words(titles) if len(titles) >= 2 else ""
+    lines: list[str] = []
+    if common:
+        lines.append(f"<i>{escape(common.rstrip(' ,:;–—-'))}</i>")
+    for r in results:
+        topic_id = r.get("topic_id")
+        raw_title = str(r.get("title") or "")
+        diff = raw_title[len(common) :] if common else raw_title
+        # Strip stray punctuation left dangling by the prefix cut (e.g. a
+        # closing ``]`` whose opening ``[`` was lifted into the header).
+        diff = diff.strip(" ,:;–—-]")
+        if not diff:
+            diff = raw_title
+        size_b = r.get("size_bytes")
+        size_tag = _human_size_gb(size_b) if isinstance(size_b, int) and size_b > 0 else ""
+        url = str(r.get("url") or "").strip()
+        diff_html = escape(diff)
+        link = f'<a href="{escape(url)}">{diff_html}</a>' if url else diff_html
+        id_badge = f"<code>#{topic_id}</code>" if topic_id is not None else ""
+        head = " · ".join(p for p in (id_badge, size_tag) if p)
+        lines.append(f"{head} · {link}" if head else link)
+    return "\n".join(lines)
 
 
-def _human_size_small(n: int) -> str:
+def _human_size_gb(n: int) -> str:
     if n >= 1024**4:
         return f"{n / 1024**4:.1f} TB"
     if n >= 1024**3:
@@ -160,6 +166,33 @@ def _human_size_small(n: int) -> str:
     if n >= 1024**2:
         return f"{n // 1024**2} MB"
     return f"{n} B"
+
+
+def _common_prefix_words(titles: list[str]) -> str:
+    """Longest common prefix, trimmed at the last word/punct boundary.
+
+    Returning a fragment that ends mid-word looks jagged; we snap back
+    to the last whitespace/punctuation so the shown prefix reads as a
+    clean phrase.
+    """
+    if not titles:
+        return ""
+    base = titles[0]
+    n = len(base)
+    for s in titles[1:]:
+        m = min(n, len(s))
+        i = 0
+        while i < m and base[i] == s[i]:
+            i += 1
+        n = i
+        if n == 0:
+            return ""
+    prefix = base[:n]
+    # Snap to last word/punct boundary so we don't cut inside a word.
+    for i in range(len(prefix) - 1, -1, -1):
+        if prefix[i] in " ,:;/-—–":
+            return prefix[: i + 1]
+    return ""
 
 
 def format_trailer_caption(trailer: dict[str, Any]) -> str:

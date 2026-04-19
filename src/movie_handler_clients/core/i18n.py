@@ -25,7 +25,7 @@ RU: Final[dict[str, str]] = {
     "details.button_back": "← К списку",
     "stub.trailer": "🎬 Сервис трейлеров временно недоступен.",
     "stub.download": "⬇️ Сервис скачивания временно недоступен.",
-    "download.list_header": "🔎 Раздачи по запросу «{query}» — выбери раздачу:",
+    "download.list_header": "Раздачи «{query}»:",
     "download.no_results": "⬇️ Ничего не нашлось на rutracker.",
     "download.error": "Не удалось получить раздачи: {detail}",
     "download.captcha": (
