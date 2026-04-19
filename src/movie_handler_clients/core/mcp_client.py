@@ -44,19 +44,7 @@ class BaseMCPClient:
     # lifecycle
     # ------------------------------------------------------------------
     async def __aenter__(self) -> Self:
-        stack = AsyncExitStack()
-        try:
-            read, write, _ = await stack.enter_async_context(
-                streamablehttp_client(self._url, headers=self._headers)
-            )
-            session = await stack.enter_async_context(ClientSession(read, write))
-            await session.initialize()
-        except Exception:
-            await stack.aclose()
-            raise
-        self._stack = stack
-        self._session = session
-        log.info("mcp.session_opened", url=self._url)
+        await self._open_session()
         return self
 
     async def __aexit__(
@@ -65,11 +53,48 @@ class BaseMCPClient:
         exc: BaseException | None,
         tb: TracebackType | None,
     ) -> None:
+        await self._close_session(logged=True)
+
+    async def _open_session(self) -> None:
+        stack = AsyncExitStack()
+        try:
+            read, write, _ = await stack.enter_async_context(
+                streamablehttp_client(self._url, headers=self._headers)
+            )
+            session = await stack.enter_async_context(ClientSession(read, write))
+            await session.initialize()
+        except BaseException:
+            # BaseExceptionGroup (from anyio task groups) is not a subclass of
+            # Exception; catch the broader BaseException so teardown runs.
+            await stack.aclose()
+            raise
+        self._stack = stack
+        self._session = session
+        log.info("mcp.session_opened", url=self._url)
+
+    async def _close_session(self, *, logged: bool) -> None:
         if self._stack is not None:
-            await self._stack.aclose()
+            try:
+                await self._stack.aclose()
+            except (Exception, BaseExceptionGroup):
+                # Upstream may have vanished; we only care that our handles
+                # are released.
+                log.debug("mcp.session_close_error", url=self._url, exc_info=True)
         self._stack = None
         self._session = None
-        log.info("mcp.session_closed")
+        if logged:
+            log.info("mcp.session_closed", url=self._url)
+
+    async def _reconnect(self) -> None:
+        """Drop the current session and open a fresh one.
+
+        Used on ``session terminated`` / 404 errors that appear when the
+        upstream MCP server restarted and no longer recognises our session
+        id. One attempt only; the caller decides whether to retry.
+        """
+        await self._close_session(logged=False)
+        await self._open_session()
+        log.info("mcp.session_reopened", url=self._url)
 
     # ------------------------------------------------------------------
     # tool calls
@@ -95,7 +120,19 @@ class BaseMCPClient:
         error: str | None = None
         payload: dict[str, Any] | None = None
         try:
-            result = await self._session.call_tool(name, arguments)
+            try:
+                result = await self._session.call_tool(name, arguments)
+            except Exception as exc:
+                # The upstream server was restarted or our session id expired —
+                # both land here as "Session terminated" / 404 from the HTTP
+                # transport. One reconnect + retry. Any other failure bubbles
+                # up unchanged.
+                if not _is_session_terminated(exc):
+                    raise
+                log.info("mcp.session_stale_retrying", url=self._url)
+                await self._reconnect()
+                assert self._session is not None
+                result = await self._session.call_tool(name, arguments)
             payload = _extract_payload(result)
             return payload
         except Exception as exc:
@@ -138,6 +175,18 @@ def _extract_payload(result: Any) -> dict[str, Any]:
                 return decoded
 
     raise MCPClientError("MCP response did not contain a JSON payload")
+
+
+def _is_session_terminated(exc: BaseException) -> bool:
+    """Heuristic for the 'server lost our session id' family of errors.
+
+    Streamable-HTTP transport surfaces a restart as a plain string
+    "Session terminated" on calls with a stale session id; the upstream
+    server returns 404 before that message is generated, so we also
+    trigger on that number in the text.
+    """
+    text = str(exc).lower()
+    return "session terminated" in text or "404" in text
 
 
 class MovieMetadataMCPClient(BaseMCPClient):

@@ -322,6 +322,41 @@ async def test_download_callback_surfaces_captcha() -> None:
     assert kwargs.get("show_alert") is True
 
 
+async def test_base_mcp_client_reconnects_on_session_terminated() -> None:
+    """A stale session id should trigger one silent reconnect + retry."""
+    from unittest.mock import MagicMock
+
+    from movie_handler_clients.core import mcp_client as mc
+
+    client = mc.BaseMCPClient(url="http://127.0.0.1:0/mcp", auth_token="t", traffic_log=AsyncMock())
+    # Mark as entered — we're not actually going over the wire.
+    client._session = AsyncMock()
+    client._stack = MagicMock()
+    client._stack.aclose = AsyncMock()
+
+    call_results = [Exception("Session terminated"), MagicMock(structuredContent={"ok": True})]
+    client._session.call_tool = AsyncMock(side_effect=call_results)
+
+    reopen_called: list[int] = []
+
+    async def fake_open() -> None:
+        reopen_called.append(1)
+        client._session = AsyncMock()
+        client._session.call_tool = AsyncMock(return_value=call_results[1])
+        client._stack = MagicMock()
+        client._stack.aclose = AsyncMock()
+
+    monkey_target = "_open_session"
+    import types
+
+    client._open_session = types.MethodType(lambda self: fake_open(), client)  # type: ignore[assignment]
+    _ = monkey_target
+
+    payload = await client.call_tool("x", {"a": 1}, tg_user_id=None)
+    assert payload == {"ok": True}
+    assert reopen_called == [1]
+
+
 async def test_torrent_pick_sends_document() -> None:
     cq = SimpleNamespace(
         data="tor:42",
