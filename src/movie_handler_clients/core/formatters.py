@@ -125,6 +125,43 @@ def format_details(payload: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def format_torrent_row(index: int, row: dict[str, Any]) -> str:
+    """One line in the torrent pick-list: ``N. Title — quality • size • 🌱seeders``.
+
+    Detail hints (quality / HDR / size / seeders) also appear on the button
+    below; duplicating them in the list text gives the user context once
+    the keyboard row has been tapped and the button text scrolled off.
+    """
+    title = escape(str(row.get("title") or f"#{row.get('topic_id')}"))
+    bits: list[str] = []
+    quality = row.get("quality")
+    if quality:
+        bits.append(escape(str(quality)))
+    size_b = row.get("size_bytes")
+    if isinstance(size_b, int) and size_b > 0:
+        bits.append(_human_size_small(size_b))
+    if row.get("hdr"):
+        bits.append("HDR")
+    seeders = row.get("seeders")
+    if isinstance(seeders, int):
+        bits.append(f"🌱 {seeders}")
+    tail = " • ".join(bits)
+    line = f"{index}. <b>{title}</b>"
+    if tail:
+        line += f"\n    {tail}"
+    return line
+
+
+def _human_size_small(n: int) -> str:
+    if n >= 1024**4:
+        return f"{n / 1024**4:.1f} TB"
+    if n >= 1024**3:
+        return f"{n / 1024**3:.1f} GB"
+    if n >= 1024**2:
+        return f"{n // 1024**2} MB"
+    return f"{n} B"
+
+
 def format_trailer_caption(trailer: dict[str, Any]) -> str:
     """One Telegram message per trailer — title + language + URL.
 

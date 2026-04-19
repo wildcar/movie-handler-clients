@@ -29,6 +29,47 @@ def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> In
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def torrent_list_keyboard(results: list[dict[str, object]]) -> InlineKeyboardMarkup:
+    """One button per torrent — ``quality • size • HDR? • 🌱seeders``.
+
+    Telegram button labels are capped at 64 characters; we keep the
+    row short and rely on the text message above for the full title.
+    """
+    rows: list[list[InlineKeyboardButton]] = []
+    for r in results:
+        topic_id = r.get("topic_id")
+        if not isinstance(topic_id, int):
+            continue
+        parts: list[str] = []
+        quality = r.get("quality")
+        if quality:
+            parts.append(str(quality))
+        size_b = r.get("size_bytes")
+        if isinstance(size_b, int) and size_b > 0:
+            parts.append(_human_size(size_b))
+        if r.get("hdr"):
+            parts.append("HDR")
+        seeders = r.get("seeders")
+        if isinstance(seeders, int):
+            parts.append(f"🌱{seeders}")
+        label = " • ".join(parts) or f"#{topic_id}"
+        rows.append([InlineKeyboardButton(text=label[:64], callback_data=f"tor:{topic_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _human_size(n: int) -> str:
+    """Rutracker-style human size. Keeps one decimal for GB/TB, none for MB."""
+    if n >= 1024**4:
+        return f"{n / 1024**4:.1f}TB"
+    if n >= 1024**3:
+        return f"{n / 1024**3:.1f}GB"
+    if n >= 1024**2:
+        return f"{n // 1024**2}MB"
+    if n >= 1024:
+        return f"{n // 1024}KB"
+    return f"{n}B"
+
+
 def details_keyboard(imdb_id: str, query_id: str | None) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
         [

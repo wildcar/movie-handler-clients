@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import base64
+
 import structlog
 from aiogram import F, Router
-from aiogram.types import CallbackQuery
+from aiogram.types import BufferedInputFile, CallbackQuery
 
-from ...core.formatters import format_details, format_search_item, format_trailer_caption
+from ...core.formatters import (
+    format_details,
+    format_search_item,
+    format_torrent_row,
+    format_trailer_caption,
+)
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
+from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
-from ..keyboards import details_keyboard, search_results_keyboard
+from ..keyboards import details_keyboard, search_results_keyboard, torrent_list_keyboard
 from ..search_cache import SearchCache
+from ..title_cache import TitleCache
 
 router = Router(name="details")
 log = structlog.get_logger(__name__)
@@ -21,6 +30,7 @@ log = structlog.get_logger(__name__)
 async def on_details(
     cq: CallbackQuery,
     mcp: MovieMetadataMCPClient,
+    title_cache: TitleCache,
 ) -> None:
     _, imdb_id, query_id = (cq.data or "").split(":", 2)
     tg_user_id = cq.from_user.id if cq.from_user else None
@@ -41,6 +51,16 @@ async def on_details(
     if not isinstance(details, dict):
         await cq.answer(t("details.not_found"), show_alert=True)
         return
+
+    # Remember title+year for the later "⬇️ Скачать" callback, which only
+    # carries the IMDb id — we don't want to re-fetch details just to
+    # build the rutracker query.
+    year_val = details.get("year")
+    title_cache.put(
+        imdb_id,
+        str(details.get("title") or details.get("original_title") or ""),
+        int(year_val) if isinstance(year_val, int) else None,
+    )
 
     caption = format_details(payload)
     poster = details.get("poster_url")
@@ -102,8 +122,105 @@ async def on_trailer(
 
 
 @router.callback_query(F.data.startswith("dl:"))
-async def on_download_stub(cq: CallbackQuery) -> None:
-    await cq.answer(t("stub.download"), show_alert=True)
+async def on_download(
+    cq: CallbackQuery,
+    torrent: RutrackerTorrentMCPClient | None,
+    title_cache: TitleCache,
+) -> None:
+    imdb_id = (cq.data or "")[3:]
+    tg_user_id = cq.from_user.id if cq.from_user else None
+
+    if torrent is None or cq.message is None:
+        await cq.answer(t("stub.download"), show_alert=True)
+        return
+
+    cached = title_cache.get(imdb_id)
+    if cached is None:
+        # Should only happen if the bot restarted between details view and
+        # download tap — tell the user to reopen the card.
+        await cq.answer(t("download.reopen_card"), show_alert=True)
+        return
+    title, year = cached
+    query = f"{title} {year}" if year else title
+
+    try:
+        payload = await torrent.search_torrents(query, limit=10, tg_user_id=tg_user_id)
+    except MCPClientError as exc:
+        log.warning("torrent.search_failed", error=str(exc))
+        await cq.answer(t("download.error", detail=str(exc)), show_alert=True)
+        return
+
+    if err := payload.get("error"):
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        if code == "captcha_required":
+            await cq.answer(t("download.captcha"), show_alert=True)
+        elif code == "not_configured":
+            await cq.answer(t("download.not_configured"), show_alert=True)
+        else:
+            await cq.answer(t("download.error", detail=_err_msg(err)), show_alert=True)
+        return
+
+    results = payload.get("results") or []
+    if not results:
+        await cq.answer(t("download.no_results"), show_alert=True)
+        return
+
+    header = t("download.list_header", query=query)
+    lines = [header] + [format_torrent_row(i, r) for i, r in enumerate(results, start=1)]
+    await cq.message.answer(
+        "\n".join(lines),
+        parse_mode="HTML",
+        reply_markup=torrent_list_keyboard(results),
+        disable_web_page_preview=True,
+    )
+    await cq.answer()
+
+
+@router.callback_query(F.data.startswith("tor:"))
+async def on_torrent_pick(
+    cq: CallbackQuery,
+    torrent: RutrackerTorrentMCPClient | None,
+) -> None:
+    topic_id_str = (cq.data or "")[4:]
+    try:
+        topic_id = int(topic_id_str)
+    except ValueError:
+        await cq.answer()
+        return
+    tg_user_id = cq.from_user.id if cq.from_user else None
+
+    if torrent is None or cq.message is None:
+        await cq.answer(t("stub.download"), show_alert=True)
+        return
+
+    try:
+        payload = await torrent.get_torrent_file(topic_id, tg_user_id=tg_user_id)
+    except MCPClientError as exc:
+        log.warning("torrent.download_failed", error=str(exc))
+        await cq.answer(t("download.error", detail=str(exc)), show_alert=True)
+        return
+
+    if err := payload.get("error"):
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        if code == "captcha_required":
+            await cq.answer(t("download.captcha"), show_alert=True)
+        else:
+            await cq.answer(t("download.error", detail=_err_msg(err)), show_alert=True)
+        return
+
+    f = payload.get("file") or {}
+    b64 = f.get("content_base64")
+    filename = f.get("filename") or f"[rutracker.org].t{topic_id}.torrent"
+    if not isinstance(b64, str):
+        await cq.answer(t("download.error", detail="empty payload"), show_alert=True)
+        return
+
+    blob = base64.b64decode(b64)
+    await cq.message.answer_document(
+        BufferedInputFile(blob, filename=filename),
+        caption=t("download.sent_caption"),
+    )
+    await cq.answer()
 
 
 @router.callback_query(F.data.startswith("b:"))

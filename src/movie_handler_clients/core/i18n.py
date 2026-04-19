@@ -24,7 +24,17 @@ RU: Final[dict[str, str]] = {
     "details.button_download": "⬇️ Скачать",
     "details.button_back": "← К списку",
     "stub.trailer": "🎬 Сервис трейлеров временно недоступен.",
-    "stub.download": "⬇️ Скачивание появится в следующей версии.",
+    "stub.download": "⬇️ Сервис скачивания временно недоступен.",
+    "download.list_header": "🔎 Раздачи по запросу «{query}» — выбери раздачу:",
+    "download.no_results": "⬇️ Ничего не нашлось на rutracker.",
+    "download.error": "Не удалось получить раздачи: {detail}",
+    "download.captcha": (
+        "rutracker просит капчу — зайди вручную в браузере и обнови cookie "
+        "bb_session в файле сервиса."
+    ),
+    "download.not_configured": "На сервере не заданы логин и пароль rutracker.",
+    "download.reopen_card": "Открой карточку фильма заново и нажми «Скачать».",
+    "download.sent_caption": "✅ Торрент-файл готов.",
     "trailer.not_found": "🎬 Трейлеры не найдены.",
     "trailer.error": "Не удалось получить трейлеры: {detail}",
     "trailer.language.ru": "🇷🇺 Русский",

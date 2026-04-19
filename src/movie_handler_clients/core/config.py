@@ -34,6 +34,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8766/mcp",
         description="Streamable-HTTP endpoint of the movie-trailer-mcp server.",
     )
+    rutracker_torrent_mcp_url: str = Field(
+        "http://127.0.0.1:8767/mcp",
+        description="Streamable-HTTP endpoint of the rutracker-torrent-mcp server.",
+    )
     mcp_auth_token: str = Field(
         ...,
         description="Bearer token sent to every MCP server request.",

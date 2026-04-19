@@ -234,7 +234,115 @@ async def test_trailer_callback_answers_not_found_when_empty() -> None:
     cq.message.answer.assert_not_awaited()
 
 
-async def test_download_callback_is_stub() -> None:
-    cq = SimpleNamespace(data="dl:tt1160419", answer=AsyncMock())
-    await details_mod.on_download_stub(cq)  # type: ignore[arg-type]
+async def test_download_callback_falls_back_to_stub_when_no_client() -> None:
+    from movie_handler_clients.telegram.title_cache import TitleCache
+
+    cq = SimpleNamespace(
+        data="dl:tt1160419",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    await details_mod.on_download(cq, torrent=None, title_cache=TitleCache())  # type: ignore[arg-type]
     cq.answer.assert_awaited_once()
+    (body,), kwargs = cq.answer.call_args
+    assert "недоступ" in body
+    assert kwargs.get("show_alert") is True
+
+
+async def test_download_callback_lists_torrents() -> None:
+    from movie_handler_clients.telegram.title_cache import TitleCache
+
+    cache = TitleCache()
+    cache.put("tt1160419", "Дюна", 2021)
+    cq = SimpleNamespace(
+        data="dl:tt1160419",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    torrent = AsyncMock()
+    torrent.search_torrents = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "topic_id": 1,
+                    "title": "Dune (2021) 1080p HDR",
+                    "quality": "1080p",
+                    "size_bytes": 20 * 1024**3,
+                    "hdr": True,
+                    "seeders": 1234,
+                },
+                {
+                    "topic_id": 2,
+                    "title": "Dune (2021) 720p",
+                    "quality": "720p",
+                    "size_bytes": 5 * 1024**3,
+                    "hdr": False,
+                    "seeders": 200,
+                },
+            ],
+            "error": None,
+        }
+    )
+
+    await details_mod.on_download(cq, torrent=torrent, title_cache=cache)  # type: ignore[arg-type]
+
+    torrent.search_torrents.assert_awaited_once_with("Дюна 2021", limit=10, tg_user_id=42)
+    cq.message.answer.assert_awaited_once()
+    body = cq.message.answer.call_args.args[0]
+    assert "Dune (2021) 1080p HDR" in body
+    # Buttons carry quality / size / HDR / seeders.
+    kb = cq.message.answer.call_args.kwargs["reply_markup"].inline_keyboard
+    labels = [row[0].text for row in kb]
+    assert any("1080p" in lbl and "HDR" in lbl and "🌱1234" in lbl for lbl in labels)
+
+
+async def test_download_callback_surfaces_captcha() -> None:
+    from movie_handler_clients.telegram.title_cache import TitleCache
+
+    cache = TitleCache()
+    cache.put("tt1160419", "Дюна", 2021)
+    cq = SimpleNamespace(
+        data="dl:tt1160419",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    torrent = AsyncMock()
+    torrent.search_torrents = AsyncMock(
+        return_value={"results": [], "error": {"code": "captcha_required", "message": "..."}}
+    )
+
+    await details_mod.on_download(cq, torrent=torrent, title_cache=cache)  # type: ignore[arg-type]
+
+    cq.answer.assert_awaited_once()
+    (body,), kwargs = cq.answer.call_args
+    assert "капч" in body.lower()
+    assert kwargs.get("show_alert") is True
+
+
+async def test_torrent_pick_sends_document() -> None:
+    cq = SimpleNamespace(
+        data="tor:42",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer_document=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    torrent = AsyncMock()
+    torrent.get_torrent_file = AsyncMock(
+        return_value={
+            "file": {
+                "topic_id": 42,
+                "filename": "[rutracker.org].t42.torrent",
+                "content_base64": "ZA==",  # base64 for b"d"
+                "size_bytes": 1,
+            },
+            "error": None,
+        }
+    )
+
+    await details_mod.on_torrent_pick(cq, torrent=torrent)  # type: ignore[arg-type]
+
+    torrent.get_torrent_file.assert_awaited_once_with(42, tg_user_id=42)
+    cq.message.answer_document.assert_awaited_once()
