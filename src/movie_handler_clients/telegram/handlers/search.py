@@ -38,7 +38,11 @@ async def on_text(
 
     tg_user_id = message.from_user.id if message.from_user else None
 
-    title, year = _split_title_year(query)
+    cleaned, kind_hint = _clean_query(query)
+    title, year = _split_title_year(cleaned)
+    if not title:
+        await message.answer(t("search.empty_query"))
+        return
     args: dict[str, Any] = {"title": title}
     if year is not None:
         args["year"] = year
@@ -59,6 +63,9 @@ async def on_text(
     results: list[dict[str, Any]] = [
         r for r in (payload.get("results") or []) if r.get("imdb_id")
     ]
+    if kind_hint is not None:
+        # User disambiguated ("сериал X" / "фильм X"); drop the other kind.
+        results = [r for r in results if r.get("kind") == kind_hint]
     if not results:
         await message.answer(t("search.no_results", query=query))
         return
@@ -100,6 +107,54 @@ def _sort_key(item: dict[str, Any]) -> int:
 
 
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
+
+# Characters people wrap titles in: ASCII + CJK + Russian typographic quotes,
+# plus parens/brackets. Stripped from both ends of the query.
+_QUOTE_CHARS = '"\'«»„“”‘’‹›()[]{}<>'
+
+# Lead/trail tokens that signal "I want a film" vs "I want a series".
+# Regex word-boundaries don't cooperate with Cyrillic; we match as plain
+# tokens surrounded by whitespace after punctuation stripping.
+_KIND_HINT_MOVIE = {"фильм", "фильма", "кино", "film", "movie"}
+_KIND_HINT_SERIES = {"сериал", "сериала", "шоу", "series", "show", "tv"}
+_KIND_HINTS = _KIND_HINT_MOVIE | _KIND_HINT_SERIES
+
+
+def _clean_query(text: str) -> tuple[str, str | None]:
+    """Strip noise from a user's search query.
+
+    - Removes typographic quotes and brackets wherever they appear.
+    - Detects a leading or trailing "фильм"/"сериал"/etc. keyword and
+      returns it as a ``kind`` hint (``"movie"`` | ``"series"``) so the
+      caller can filter results accordingly.
+
+    Returns ``(cleaned_title, kind_hint)``; the hint is ``None`` when no
+    keyword is present.
+    """
+
+    s = text.strip()
+    # Drop every quote/bracket character; users sometimes sprinkle them
+    # inside the title ("Сериал «Отыграть назад»"), not just at the edges.
+    s = s.translate({ord(c): " " for c in _QUOTE_CHARS})
+    s = re.sub(r"\s+", " ", s).strip()
+
+    kind_hint: str | None = None
+    tokens = s.split(" ")
+    while tokens and tokens[0].lower().rstrip(".,:-") in _KIND_HINTS:
+        kind_hint = _hint_to_kind(tokens.pop(0))
+    while tokens and tokens[-1].lower().rstrip(".,:-") in _KIND_HINTS:
+        kind_hint = _hint_to_kind(tokens.pop()) or kind_hint
+
+    return " ".join(tokens), kind_hint
+
+
+def _hint_to_kind(token: str) -> str | None:
+    t = token.lower().rstrip(".,:-")
+    if t in _KIND_HINT_SERIES:
+        return "series"
+    if t in _KIND_HINT_MOVIE:
+        return "movie"
+    return None
 
 
 def _split_title_year(query: str) -> tuple[str, int | None]:

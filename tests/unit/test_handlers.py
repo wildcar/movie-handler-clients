@@ -41,6 +41,17 @@ async def test_on_text_empty_short_circuits() -> None:
     msg.answer.assert_awaited_once()
 
 
+def test_clean_query_strips_quotes_and_detects_kind() -> None:
+    assert search_mod._clean_query("Сериал «Отыграть назад»") == (
+        "Отыграть назад",
+        "series",
+    )
+    assert search_mod._clean_query('фильм "Дюна"') == ("Дюна", "movie")
+    assert search_mod._clean_query("Матрица шоу") == ("Матрица", "series")
+    assert search_mod._clean_query("Dune") == ("Dune", None)
+    assert search_mod._clean_query("  «  »  ") == ("", None)
+
+
 def test_split_title_year_extracts_4digit_year() -> None:
     assert search_mod._split_title_year("Дюна 2021") == ("Дюна", 2021)
     assert search_mod._split_title_year("Dune, 2021") == ("Dune", 2021)
@@ -69,6 +80,27 @@ async def test_on_text_renders_results(sample_search_payload: dict) -> None:
     assert "Dune" in body  # original in parens
     assert kwargs["parse_mode"] == "HTML"
     assert kwargs["reply_markup"].inline_keyboard
+
+
+async def test_on_text_filters_by_kind_hint() -> None:
+    payload = {
+        "results": [
+            {"kind": "movie", "imdb_id": "tt1", "title": "X film", "year": 2020},
+            {"kind": "series", "imdb_id": "tt2", "title": "X show", "year": 2021},
+        ],
+    }
+    msg = _msg("сериал X")
+    mcp = AsyncMock()
+    mcp.call_tool = AsyncMock(return_value=payload)
+
+    await search_mod.on_text(msg, mcp=mcp, search_cache=SearchCache())  # type: ignore[arg-type]
+
+    # "сериал" prefix was stripped from the title sent to MCP ...
+    mcp.call_tool.assert_awaited_once_with("search_movie", {"title": "X"}, tg_user_id=42)
+    # ... and only the series was rendered.
+    body = msg.answer.call_args.args[0]
+    assert "X show" in body
+    assert "X film" not in body
 
 
 async def test_on_text_groups_and_sorts(monkeypatch: pytest.MonkeyPatch) -> None:
