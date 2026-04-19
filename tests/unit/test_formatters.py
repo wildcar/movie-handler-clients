@@ -10,6 +10,21 @@ def test_format_search_item_escapes_html() -> None:
     assert "2024" in out
 
 
+def test_format_search_item_shows_original_when_different() -> None:
+    item = {"title": "Дюна", "original_title": "Dune", "year": 2021}
+    out = format_search_item(item)
+    assert "Дюна" in out
+    assert "Dune" in out
+    assert "2021" in out
+
+
+def test_format_search_item_omits_original_when_same() -> None:
+    item = {"title": "Dune", "original_title": "Dune", "year": 2021}
+    out = format_search_item(item)
+    # Original title appears only once — no "Dune (Dune)" duplication.
+    assert out.count("Dune") == 1
+
+
 def test_format_search_item_omits_overview() -> None:
     item = {"title": "X", "year": 2020, "overview": "noisy english text"}
     assert "noisy" not in format_search_item(item)
@@ -17,7 +32,8 @@ def test_format_search_item_omits_overview() -> None:
 
 def test_format_details_includes_all_ratings(sample_details_payload: dict) -> None:
     out = format_details(sample_details_payload)
-    assert "Dune" in out
+    assert "Дюна" in out
+    assert "Dune" in out  # original title in parens
     assert "2021" in out
     assert "155 мин" in out
     for label in ("TMDB", "IMDb", "Metacritic", "КиноПоиск"):

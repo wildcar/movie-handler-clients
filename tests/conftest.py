@@ -27,9 +27,11 @@ def sample_search_payload() -> dict[str, object]:
         "query": "Dune",
         "results": [
             {
+                "kind": "movie",
                 "imdb_id": "tt1160419",
                 "tmdb_id": 438631,
-                "title": "Dune",
+                "title": "Дюна",
+                "original_title": "Dune",
                 "year": 2021,
                 "poster_url": "https://image.tmdb.org/t/p/w500/abc.jpg",
                 "overview": "A noble family becomes embroiled in a war for control…",
@@ -44,8 +46,10 @@ def sample_search_payload() -> dict[str, object]:
 def sample_details_payload() -> dict[str, object]:
     return {
         "details": {
+            "kind": "movie",
             "imdb_id": "tt1160419",
-            "title": "Dune",
+            "title": "Дюна",
+            "original_title": "Dune",
             "year": 2021,
             "runtime_minutes": 155,
             "genres": ["Science Fiction", "Adventure"],

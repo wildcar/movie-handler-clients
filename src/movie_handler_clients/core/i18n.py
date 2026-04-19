@@ -15,6 +15,8 @@ RU: Final[dict[str, str]] = {
     "search.no_results": "Ничего не нашлось по запросу «{query}».",
     "search.error": "Не удалось выполнить поиск: {detail}",
     "search.results_header": "Вот что нашлось по запросу «{query}» — выбери фильм:",
+    "search.section.movies": "🎬 Фильмы:",
+    "search.section.series": "📺 Сериалы:",
     "details.error": "Не удалось получить подробности: {detail}",
     "details.not_found": "Похоже, этого фильма больше нет в базе.",
     "details.sources_failed": "⚠️ Недоступны источники: {sources}",

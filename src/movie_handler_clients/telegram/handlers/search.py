@@ -63,17 +63,40 @@ async def on_text(
         await message.answer(t("search.no_results", query=query))
         return
 
-    query_id = search_cache.put(query, results)
-    header = t("search.results_header", query=query)
-    body = "\n\n".join(
-        f"{i}. {format_search_item(item)}" for i, item in enumerate(results, start=1)
+    movies = sorted(
+        (r for r in results if r.get("kind") != "series"),
+        key=_sort_key,
+        reverse=True,
     )
+    series = sorted(
+        (r for r in results if r.get("kind") == "series"),
+        key=_sort_key,
+        reverse=True,
+    )
+    # Movies first, then series — both descending by year. The keyboard
+    # follows the same order so button positions match the text sections.
+    ordered = movies + series
+    query_id = search_cache.put(query, ordered)
+
+    sections: list[str] = [t("search.results_header", query=query)]
+    if movies:
+        sections.append(t("search.section.movies"))
+        sections.extend(format_search_item(i) for i in movies)
+    if series:
+        sections.append(t("search.section.series"))
+        sections.extend(format_search_item(i) for i in series)
+
     await message.answer(
-        f"{header}\n\n{body}",
+        "\n".join(sections),
         parse_mode="HTML",
-        reply_markup=search_results_keyboard(results, query_id),
+        reply_markup=search_results_keyboard(ordered, query_id),
         disable_web_page_preview=True,
     )
+
+
+def _sort_key(item: dict[str, Any]) -> int:
+    year = item.get("year")
+    return year if isinstance(year, int) else -1
 
 
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")

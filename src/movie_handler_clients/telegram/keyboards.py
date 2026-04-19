@@ -8,15 +8,19 @@ from ..core.i18n import t
 
 
 def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> InlineKeyboardMarkup:
-    """One button per search hit — callback data carries the IMDb id."""
+    """One button per search hit — localized title + year, kind icon as prefix.
+
+    Items arrive already sorted by the handler (by kind, then year desc).
+    """
     rows: list[list[InlineKeyboardButton]] = []
-    for idx, item in enumerate(items, start=1):
+    for item in items:
         imdb_id = item.get("imdb_id")
         if not imdb_id:
             continue
+        icon = "📺" if item.get("kind") == "series" else "🎬"
         title = str(item.get("title") or "—")
         year = item.get("year")
-        label = f"{idx}. {title}"
+        label = f"{icon} {title}"
         if year:
             label += f" ({year})"
         rows.append(

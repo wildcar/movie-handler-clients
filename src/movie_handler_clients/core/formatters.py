@@ -30,22 +30,28 @@ def _rating_line(ratings: list[dict[str, Any]]) -> str:
 def format_search_item(item: dict[str, Any]) -> str:
     """One-line entry for the search-results list.
 
-    Deliberately skips the overview — the search endpoint returns only the
-    English one, and the list already gets long. Full (Russian) overview
-    lives in the details card.
+    Shows the localized (ru-RU) title with the original title in parens when
+    they differ, plus the year. Overview is deliberately omitted — the list
+    gets long; full description lives in the details card.
     """
     title = escape(str(item.get("title") or "—"))
+    original = item.get("original_title")
     year = item.get("year")
-    head = f"<b>{title}</b>"
+    line = f"<b>{title}</b>"
+    if original and str(original) != str(item.get("title")):
+        line += f" <i>({escape(str(original))})</i>"
     if year:
-        head += f" ({escape(str(year))})"
-    return head
+        line += f" — {escape(str(year))}"
+    return line
 
 
 def format_details(payload: dict[str, Any]) -> str:
     """Render a ``get_movie_details`` envelope into an HTML caption."""
     movie = payload.get("details") or {}
+    kind = movie.get("kind") or "movie"
+    icon = "📺" if kind == "series" else "🎬"
     title = escape(str(movie.get("title") or "—"))
+    original = movie.get("original_title")
     year = movie.get("year")
     runtime = movie.get("runtime_minutes")
     genres = movie.get("genres") or []
@@ -53,9 +59,11 @@ def format_details(payload: dict[str, Any]) -> str:
     ratings = movie.get("ratings") or []
 
     lines: list[str] = []
-    head = f"<b>{title}</b>"
+    head = f"{icon} <b>{title}</b>"
+    if original and str(original) != str(movie.get("title")):
+        head += f" <i>({escape(str(original))})</i>"
     if year:
-        head += f" ({escape(str(year))})"
+        head += f" — {escape(str(year))}"
     lines.append(head)
 
     meta_bits: list[str] = []

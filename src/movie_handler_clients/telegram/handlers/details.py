@@ -84,12 +84,19 @@ async def on_back(
         await cq.answer()
         return
     query, results = entry
-    header = t("search.results_header", query=query)
-    body = "\n\n".join(
-        f"{i}. {format_search_item(item)}" for i, item in enumerate(results, start=1)
-    )
+    # Cache stores results already ordered (movies then series, year desc);
+    # splitting by kind here keeps the section headers consistent.
+    movies = [r for r in results if r.get("kind") != "series"]
+    series = [r for r in results if r.get("kind") == "series"]
+    sections: list[str] = [t("search.results_header", query=query)]
+    if movies:
+        sections.append(t("search.section.movies"))
+        sections.extend(format_search_item(i) for i in movies)
+    if series:
+        sections.append(t("search.section.series"))
+        sections.extend(format_search_item(i) for i in series)
     await cq.message.answer(
-        f"{header}\n\n{body}",
+        "\n".join(sections),
         parse_mode="HTML",
         reply_markup=search_results_keyboard(results, query_id),
         disable_web_page_preview=True,

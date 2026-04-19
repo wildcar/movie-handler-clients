@@ -65,9 +65,43 @@ async def test_on_text_renders_results(sample_search_payload: dict) -> None:
     kwargs = msg.answer.call_args.kwargs
     args = msg.answer.call_args.args
     body = args[0] if args else kwargs.get("text", "")
-    assert "Dune" in body
+    assert "Дюна" in body
+    assert "Dune" in body  # original in parens
     assert kwargs["parse_mode"] == "HTML"
-    assert kwargs["reply_markup"].inline_keyboard  # one button per hit
+    assert kwargs["reply_markup"].inline_keyboard
+
+
+async def test_on_text_groups_and_sorts(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = {
+        "results": [
+            {"kind": "movie", "imdb_id": "tt1", "title": "Film A", "year": 2015},
+            {"kind": "movie", "imdb_id": "tt2", "title": "Film B", "year": 2023},
+            {"kind": "series", "imdb_id": "tt3", "title": "Show A", "year": 2020},
+            {"kind": "series", "imdb_id": "tt4", "title": "Show B", "year": 2024},
+        ],
+    }
+    msg = _msg("anything")
+    mcp = AsyncMock()
+    mcp.call_tool = AsyncMock(return_value=payload)
+    cache = SearchCache()
+
+    await search_mod.on_text(msg, mcp=mcp, search_cache=cache)  # type: ignore[arg-type]
+
+    body = msg.answer.call_args.args[0]
+    # Section headers present and in the right order.
+    i_movies = body.index("Фильмы")
+    i_series = body.index("Сериалы")
+    assert i_movies < i_series
+    # Within a section, newer year appears first.
+    assert body.index("Film B") < body.index("Film A")
+    assert body.index("Show B") < body.index("Show A")
+    # Keyboard order matches: movies (desc), then series (desc).
+    kb = msg.answer.call_args.kwargs["reply_markup"].inline_keyboard
+    labels = [row[0].text for row in kb]
+    assert labels[0].endswith("(2023)")  # Film B
+    assert labels[1].endswith("(2015)")  # Film A
+    assert labels[2].endswith("(2024)")  # Show B
+    assert labels[3].endswith("(2020)")  # Show A
 
 
 async def test_on_text_shows_error_when_mcp_fails() -> None:
