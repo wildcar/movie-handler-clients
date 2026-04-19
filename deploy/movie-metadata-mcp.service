@@ -1,0 +1,28 @@
+[Unit]
+Description=movie-metadata-mcp (streamable HTTP)
+Documentation=https://github.com/wildcar/movie-metadata-mcp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=movie
+Group=movie
+WorkingDirectory=/opt/movie-metadata-mcp
+EnvironmentFile=/etc/movie-handler/metadata.env
+Environment=MCP_TRANSPORT=streamable-http
+Environment=FASTMCP_HOST=127.0.0.1
+Environment=FASTMCP_PORT=8765
+ExecStart=/opt/movie-metadata-mcp/.venv/bin/movie-metadata-mcp
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/movie-metadata-mcp/.cache
+
+[Install]
+WantedBy=multi-user.target

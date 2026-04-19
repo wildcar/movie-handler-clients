@@ -1,0 +1,106 @@
+"""Movie-details + stub callbacks for trailer/download + back-to-list."""
+
+from __future__ import annotations
+
+import structlog
+from aiogram import F, Router
+from aiogram.types import CallbackQuery
+
+from ...core.formatters import format_details, format_search_item
+from ...core.i18n import t
+from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
+from ..keyboards import details_keyboard, search_results_keyboard
+from ..search_cache import SearchCache
+
+router = Router(name="details")
+log = structlog.get_logger(__name__)
+
+
+@router.callback_query(F.data.startswith("d:"))
+async def on_details(
+    cq: CallbackQuery,
+    mcp: MovieMetadataMCPClient,
+) -> None:
+    _, imdb_id, query_id = (cq.data or "").split(":", 2)
+    tg_user_id = cq.from_user.id if cq.from_user else None
+
+    try:
+        payload = await mcp.call_tool(
+            "get_movie_details", {"imdb_id": imdb_id}, tg_user_id=tg_user_id
+        )
+    except MCPClientError as exc:
+        await cq.answer(t("details.error", detail=str(exc)), show_alert=True)
+        return
+
+    if err := payload.get("error"):
+        await cq.answer(t("details.error", detail=_err_msg(err)), show_alert=True)
+        return
+
+    movie = payload.get("movie")
+    if not isinstance(movie, dict):
+        await cq.answer(t("details.not_found"), show_alert=True)
+        return
+
+    caption = format_details(payload)
+    poster = movie.get("poster_url")
+    kb = details_keyboard(imdb_id, query_id or None)
+
+    if cq.message is None:
+        await cq.answer()
+        return
+
+    if poster:
+        try:
+            await cq.message.answer_photo(
+                photo=str(poster), caption=caption, parse_mode="HTML", reply_markup=kb
+            )
+        except Exception:
+            log.exception("details.photo_failed", imdb_id=imdb_id)
+            await cq.message.answer(caption, parse_mode="HTML", reply_markup=kb)
+    else:
+        await cq.message.answer(caption, parse_mode="HTML", reply_markup=kb)
+
+    await cq.answer()
+
+
+@router.callback_query(F.data.startswith("t:"))
+async def on_trailer_stub(cq: CallbackQuery) -> None:
+    await cq.answer(t("stub.trailer"), show_alert=True)
+
+
+@router.callback_query(F.data.startswith("dl:"))
+async def on_download_stub(cq: CallbackQuery) -> None:
+    await cq.answer(t("stub.download"), show_alert=True)
+
+
+@router.callback_query(F.data.startswith("b:"))
+async def on_back(
+    cq: CallbackQuery,
+    search_cache: SearchCache,
+) -> None:
+    query_id = (cq.data or "")[2:]
+    entry = search_cache.get(query_id)
+    if entry is None or cq.message is None:
+        await cq.answer()
+        return
+    query, results = entry
+    header = t("search.results_header", query=query)
+    body = "\n\n".join(
+        f"{i}. {format_search_item(item)}" for i, item in enumerate(results, start=1)
+    )
+    await cq.message.answer(
+        f"{header}\n\n{body}",
+        parse_mode="HTML",
+        reply_markup=search_results_keyboard(results, query_id),
+        disable_web_page_preview=True,
+    )
+    await cq.answer()
+
+
+def _err_msg(err: object) -> str:
+    if isinstance(err, dict):
+        return str(err.get("message") or err.get("code") or err)
+    return str(err)
+
+
+__all__ = ["router"]

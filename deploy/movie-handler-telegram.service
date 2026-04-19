@@ -1,0 +1,26 @@
+[Unit]
+Description=movie-handler Telegram bot
+Documentation=https://github.com/wildcar/movie-handler-clients
+After=network-online.target movie-metadata-mcp.service
+Wants=network-online.target
+Requires=movie-metadata-mcp.service
+
+[Service]
+Type=simple
+User=movie
+Group=movie
+WorkingDirectory=/opt/movie-handler-clients
+EnvironmentFile=/etc/movie-handler/telegram.env
+ExecStart=/opt/movie-handler-clients/.venv/bin/movie-handler-telegram
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/movie-handler-clients/.cache
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,83 @@
+[project]
+name = "movie-handler-clients"
+version = "0.1.0"
+description = "Frontend clients (Telegram first, then Web and VK) for the movie_handler system."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "wildcar" }]
+keywords = ["telegram", "aiogram", "mcp", "movies"]
+
+dependencies = [
+    "aiogram>=3.7",
+    "mcp>=1.2.0",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "structlog>=24.1",
+    "aiosqlite>=0.20",
+]
+
+[project.scripts]
+movie-handler-telegram = "movie_handler_clients.telegram.bot:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "ruff>=0.5",
+    "mypy>=1.10",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.12.0"]
+build-backend = "uv_build"
+
+# ----------------------------------------------------------------------------
+# Tool configuration
+# ----------------------------------------------------------------------------
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",
+    "I",
+    "B",
+    "UP",
+    "ASYNC",
+    "RUF",
+]
+ignore = [
+    "E501",
+    # Russian text uses Cyrillic letters that look like Latin ones.
+    "RUF001", "RUF002", "RUF003",
+]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unused_configs = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "mcp.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "aiogram.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra -q --strict-markers"
+markers = [
+    "integration: hits real external services (Telegram, running MCP server); requires valid credentials",
+]
