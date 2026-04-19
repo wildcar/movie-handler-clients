@@ -5,25 +5,58 @@ from __future__ import annotations
 from html import escape
 from typing import Any
 
+_RATING_LABELS = {
+    "tmdb": "TMDB",
+    "imdb": "IMDb",
+    "metacritic": "Metacritic",
+    "kinopoisk": "КиноПоиск",
+}
+
+
+def _rating_badge(value: float, scale: float) -> str:
+    """Pick a colored dot for the rating. Thresholds are normalized to /10.
+
+    - red   🔴 : < 5 (<50 for metacritic-like /100 scales)
+    - yellow🟡 : [5, 7) ([50, 70))
+    - green 🟢 : [7, 10] ([70, 100])
+
+    Telegram message HTML doesn't support CSS colors, so we use an emoji
+    glyph adjacent to the number — works on both light and dark themes.
+    """
+
+    normalized = value * 10.0 / scale if scale else value
+    if normalized < 5:
+        return "🔴"
+    if normalized < 7:
+        return "🟡"
+    return "🟢"
+
+
+def _format_rating_value(value: float, scale: float) -> str:
+    """Render the number itself. Ratings on /10 keep one decimal; /100 is rounded."""
+
+    if scale >= 50:  # Metacritic-style scale — show as integer.
+        return f"{round(value)}"
+    return f"{value:.1f}"
+
 
 def _rating_line(ratings: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for r in ratings:
         src = r.get("source", "?")
         val = r.get("value")
-        scale = r.get("scale")
+        scale = r.get("scale") or 10.0
         if val is None:
             continue
-        label = {
-            "tmdb": "TMDB",
-            "imdb": "IMDb",
-            "metacritic": "Metacritic",
-            "kinopoisk": "КиноПоиск",
-        }.get(str(src), str(src))
-        if scale:
-            parts.append(f"{label}: {val}/{scale}")
-        else:
-            parts.append(f"{label}: {val}")
+        try:
+            val_f = float(val)
+            scale_f = float(scale)
+        except (TypeError, ValueError):
+            continue
+        label = _RATING_LABELS.get(str(src), str(src))
+        badge = _rating_badge(val_f, scale_f)
+        number = _format_rating_value(val_f, scale_f)
+        parts.append(f"{label}: {badge} {number}/{int(scale_f)}")
     return " • ".join(parts)
 
 

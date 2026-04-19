@@ -38,7 +38,36 @@ def test_format_details_includes_all_ratings(sample_details_payload: dict) -> No
     assert "155 мин" in out
     for label in ("TMDB", "IMDb", "Metacritic", "КиноПоиск"):
         assert label in out
+    # Numeric formatting: /10 scales get one decimal, /100 is rounded.
+    assert "7.8/10" in out  # TMDB 7.78
+    assert "8.0/10" in out  # IMDb 8.0
+    assert "74/100" in out  # Metacritic
+    assert "7.7/10" in out  # kinopoisk 7.676
+    # Colour badge: everything here is ≥7, so green.
+    assert "🟢" in out
     assert "Пауль" in out
+
+
+def test_rating_badges_by_threshold() -> None:
+    payload = {
+        "details": {
+            "title": "X",
+            "year": 2020,
+            "ratings": [
+                {"source": "tmdb", "value": 4.9, "scale": 10},  # red
+                {"source": "imdb", "value": 6.9, "scale": 10},  # yellow
+                {"source": "kinopoisk", "value": 7.0, "scale": 10},  # green
+                {"source": "metacritic", "value": 49, "scale": 100},  # red
+                {"source": "metacritic", "value": 69, "scale": 100},  # yellow
+                {"source": "metacritic", "value": 70, "scale": 100},  # green
+            ],
+        },
+        "sources_failed": [],
+    }
+    out = format_details(payload)
+    assert out.count("🔴") == 2
+    assert out.count("🟡") == 2
+    assert out.count("🟢") == 2
 
 
 def test_format_details_flags_failed_sources() -> None:
