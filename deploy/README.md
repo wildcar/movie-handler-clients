@@ -41,3 +41,24 @@ journalctl -u movie-handler-telegram.service -f
 ```
 
 `MCP_AUTH_TOKEN` **must be identical** in both env files.
+
+## Updating from git
+
+`deploy/update.sh` pulls both checkouts from their remotes and re-syncs
+dependencies. It must run as the `movie` user:
+
+```bash
+sudo install -d -o movie -g movie -m 0750 /opt/movie-handler
+sudo install -o movie -g movie -m 0750 deploy/update.sh /opt/movie-handler/update.sh
+
+sudo -u movie /opt/movie-handler/update.sh          # pull + uv sync
+sudo -u movie /opt/movie-handler/update.sh --restart # also restart services
+```
+
+`--restart` needs a narrow sudoers entry for the `movie` user (see the
+header of `update.sh`). Restarting services requires root, so the script
+never does it implicitly.
+
+Runs can be automated with a systemd timer — create
+`/etc/systemd/system/movie-handler-update.service` (`User=movie`,
+`ExecStart=/opt/movie-handler/update.sh`) plus a matching `.timer`.
