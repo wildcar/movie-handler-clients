@@ -5,6 +5,8 @@ from __future__ import annotations
 from html import escape
 from typing import Any
 
+from .i18n import t
+
 _RATING_LABELS = {
     "tmdb": "TMDB",
     "imdb": "IMDb",
@@ -117,9 +119,41 @@ def format_details(payload: dict[str, Any]) -> str:
 
     failed = payload.get("sources_failed") or []
     if failed:
-        from .i18n import t
-
         lines.append("")
         lines.append(t("details.sources_failed", sources=", ".join(str(s) for s in failed)))
 
     return "\n".join(lines)
+
+
+def format_trailer_caption(trailer: dict[str, Any]) -> str:
+    """One Telegram message per trailer — title + language + URL.
+
+    The URL is placed on its own line and NOT wrapped in a link tag, so
+    Telegram builds its own preview card with the YouTube player embedded.
+    """
+
+    icon = {
+        "trailer": "🎬",
+        "teaser": "🎞",
+        "clip": "📼",
+        "featurette": "🎥",
+    }.get(str(trailer.get("kind") or "trailer"), "🎬")
+
+    kind_label = t(f"trailer.kind.{trailer.get('kind') or 'trailer'}")
+    lang = trailer.get("language")
+    if lang == "ru":
+        lang_label = t("trailer.language.ru")
+    elif lang == "en":
+        lang_label = t("trailer.language.en")
+    elif isinstance(lang, str) and lang:
+        lang_label = t("trailer.language.other", code=lang.upper())
+    else:
+        lang_label = t("trailer.language.unknown")
+
+    title = escape(str(trailer.get("title") or kind_label))
+    url = str(trailer.get("url") or "").strip()
+
+    parts = [f"{icon} <b>{title}</b>", f"{kind_label} · {lang_label}"]
+    if url:
+        parts.append(url)
+    return "\n".join(parts)

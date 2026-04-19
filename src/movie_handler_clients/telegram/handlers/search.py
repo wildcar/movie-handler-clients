@@ -60,9 +60,7 @@ async def on_text(
 
     # Drop items without IMDb IDs: get_movie_details and all downstream MCPs
     # key off IMDb ID, so we can't act on them anyway.
-    results: list[dict[str, Any]] = [
-        r for r in (payload.get("results") or []) if r.get("imdb_id")
-    ]
+    results: list[dict[str, Any]] = [r for r in (payload.get("results") or []) if r.get("imdb_id")]
     if kind_hint is not None:
         # User disambiguated ("сериал X" / "фильм X"); drop the other kind.
         results = [r for r in results if r.get("kind") == kind_hint]
@@ -110,7 +108,7 @@ _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
 
 # Characters people wrap titles in: ASCII + CJK + Russian typographic quotes,
 # plus parens/brackets. Stripped from both ends of the query.
-_QUOTE_CHARS = '"\'«»„“”‘’‹›()[]{}<>'
+_QUOTE_CHARS = "\"'«»„“”‘’‹›()[]{}<>"
 
 # Lead/trail tokens that signal "I want a film" vs "I want a series".
 # Regex word-boundaries don't cooperate with Cyrillic; we match as plain

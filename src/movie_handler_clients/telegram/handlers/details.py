@@ -6,9 +6,10 @@ import structlog
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from ...core.formatters import format_details, format_search_item
+from ...core.formatters import format_details, format_search_item, format_trailer_caption
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
+from ...core.trailer_client import MovieTrailerMCPClient
 from ..keyboards import details_keyboard, search_results_keyboard
 from ..search_cache import SearchCache
 
@@ -64,8 +65,40 @@ async def on_details(
 
 
 @router.callback_query(F.data.startswith("t:"))
-async def on_trailer_stub(cq: CallbackQuery) -> None:
-    await cq.answer(t("stub.trailer"), show_alert=True)
+async def on_trailer(
+    cq: CallbackQuery,
+    trailer: MovieTrailerMCPClient | None,
+) -> None:
+    imdb_id = (cq.data or "")[2:]
+    tg_user_id = cq.from_user.id if cq.from_user else None
+
+    if trailer is None or cq.message is None:
+        await cq.answer(t("stub.trailer"), show_alert=True)
+        return
+
+    try:
+        payload = await trailer.find_trailer(imdb_id, tg_user_id=tg_user_id)
+    except MCPClientError as exc:
+        log.warning("trailer.mcp_failed", error=str(exc))
+        await cq.answer(t("trailer.error", detail=str(exc)), show_alert=True)
+        return
+
+    if err := payload.get("error"):
+        await cq.answer(t("trailer.not_found"), show_alert=True)
+        log.info("trailer.tool_error", imdb_id=imdb_id, error=err)
+        return
+
+    trailers = payload.get("results") or []
+    if not trailers:
+        await cq.answer(t("trailer.not_found"), show_alert=True)
+        return
+
+    # Post each trailer as its own message so Telegram builds a preview
+    # card with the video player for each one.
+    for trl in trailers:
+        caption = format_trailer_caption(trl)
+        await cq.message.answer(caption, parse_mode="HTML", disable_web_page_preview=False)
+    await cq.answer()
 
 
 @router.callback_query(F.data.startswith("dl:"))

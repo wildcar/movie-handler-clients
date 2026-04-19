@@ -11,7 +11,7 @@ import json
 import time
 from contextlib import AsyncExitStack
 from types import TracebackType
-from typing import Any
+from typing import Any, Self
 
 import structlog
 from mcp import ClientSession
@@ -26,8 +26,12 @@ class MCPClientError(RuntimeError):
     """Raised when an MCP call fails at the transport or protocol level."""
 
 
-class MovieMetadataMCPClient:
-    """Thin wrapper around an MCP ``ClientSession`` plus traffic logging."""
+class BaseMCPClient:
+    """Generic long-lived streamable-HTTP MCP client with traffic logging.
+
+    Concrete subclasses (e.g. :class:`MovieMetadataMCPClient`) add typed
+    wrappers around ``call_tool`` but don't need to reimplement lifecycle.
+    """
 
     def __init__(self, url: str, auth_token: str, traffic_log: TrafficLog) -> None:
         self._url = url
@@ -39,7 +43,7 @@ class MovieMetadataMCPClient:
     # ------------------------------------------------------------------
     # lifecycle
     # ------------------------------------------------------------------
-    async def __aenter__(self) -> MovieMetadataMCPClient:
+    async def __aenter__(self) -> Self:
         stack = AsyncExitStack()
         try:
             read, write, _ = await stack.enter_async_context(
@@ -85,7 +89,7 @@ class MovieMetadataMCPClient:
         to the end user.
         """
         if self._session is None:
-            raise RuntimeError("MovieMetadataMCPClient must be entered as a context manager")
+            raise RuntimeError(f"{type(self).__name__} must be entered as a context manager")
 
         started = time.perf_counter()
         error: str | None = None
@@ -134,3 +138,9 @@ def _extract_payload(result: Any) -> dict[str, Any]:
                 return decoded
 
     raise MCPClientError("MCP response did not contain a JSON payload")
+
+
+class MovieMetadataMCPClient(BaseMCPClient):
+    """Typed client for movie-metadata-mcp. Kept as a distinct class so tools
+    that should only see the metadata server can't accidentally be given the
+    trailer one (or vice versa)."""

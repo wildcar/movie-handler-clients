@@ -160,13 +160,78 @@ def _patch_mcp_err(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(details_mod, "MCPClientError", _MCPErr)
 
 
-async def test_trailer_callback_is_stub() -> None:
-    cq = SimpleNamespace(data="t:tt1160419", answer=AsyncMock())
-    await details_mod.on_trailer_stub(cq)  # type: ignore[arg-type]
+async def test_trailer_callback_falls_back_to_stub_when_no_client() -> None:
+    cq = SimpleNamespace(
+        data="t:tt1160419",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    await details_mod.on_trailer(cq, trailer=None)  # type: ignore[arg-type]
     cq.answer.assert_awaited_once()
     (body,), kwargs = cq.answer.call_args
-    assert "версии" in body
+    assert "недоступен" in body
     assert kwargs.get("show_alert") is True
+
+
+async def test_trailer_callback_sends_one_message_per_trailer() -> None:
+    cq = SimpleNamespace(
+        data="t:tt1160419",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    trailer = AsyncMock()
+    trailer.find_trailer = AsyncMock(
+        return_value={
+            "results": [
+                {
+                    "url": "https://www.youtube.com/watch?v=a",
+                    "title": "T1",
+                    "language": "ru",
+                    "kind": "trailer",
+                    "source": "tmdb",
+                },
+                {
+                    "url": "https://www.youtube.com/watch?v=b",
+                    "title": "T2",
+                    "language": "en",
+                    "kind": "teaser",
+                    "source": "tmdb",
+                },
+            ],
+            "sources_failed": [],
+            "error": None,
+        }
+    )
+
+    await details_mod.on_trailer(cq, trailer=trailer)  # type: ignore[arg-type]
+
+    trailer.find_trailer.assert_awaited_once_with("tt1160419", tg_user_id=42)
+    assert cq.message.answer.await_count == 2
+    first_body = cq.message.answer.await_args_list[0].args[0]
+    assert "T1" in first_body
+    assert "youtube.com/watch?v=a" in first_body
+
+
+async def test_trailer_callback_answers_not_found_when_empty() -> None:
+    cq = SimpleNamespace(
+        data="t:tt9",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    trailer = AsyncMock()
+    trailer.find_trailer = AsyncMock(
+        return_value={"results": [], "sources_failed": [], "error": None}
+    )
+
+    await details_mod.on_trailer(cq, trailer=trailer)  # type: ignore[arg-type]
+
+    cq.answer.assert_awaited_once()
+    (body,), _ = cq.answer.call_args
+    assert "не найдены" in body.lower()
+    cq.message.answer.assert_not_awaited()
 
 
 async def test_download_callback_is_stub() -> None:
