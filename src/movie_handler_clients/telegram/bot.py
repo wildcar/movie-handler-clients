@@ -46,7 +46,7 @@ async def _run(settings: Settings) -> None:
                     traffic_log=traffic,
                 )
             )
-        except Exception as exc:
+        except (Exception, BaseExceptionGroup) as exc:
             log.warning(
                 "trailer_mcp.unavailable", url=settings.movie_trailer_mcp_url, error=str(exc)
             )
@@ -61,7 +61,7 @@ async def _run(settings: Settings) -> None:
                     traffic_log=traffic,
                 )
             )
-        except Exception as exc:
+        except (Exception, BaseExceptionGroup) as exc:
             log.warning(
                 "torrent_mcp.unavailable",
                 url=settings.rutracker_torrent_mcp_url,
