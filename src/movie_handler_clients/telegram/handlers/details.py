@@ -143,26 +143,31 @@ async def on_download(
     title, year = cached
     query = f"{title} {year}" if year else title
 
+    # Stop the button spinner immediately — the rutracker search can take
+    # longer than Telegram's ~15s callback_query TTL, after which cq.answer()
+    # raises "query is too old" and the user sees nothing at all.
+    await cq.answer(t("download.searching"))
+
     try:
         payload = await torrent.search_torrents(query, limit=10, tg_user_id=tg_user_id)
     except MCPClientError as exc:
         log.warning("torrent.search_failed", error=str(exc))
-        await cq.answer(t("download.error", detail=str(exc)), show_alert=True)
+        await cq.message.answer(t("download.error", detail=str(exc)))
         return
 
     if err := payload.get("error"):
         code = (err or {}).get("code") if isinstance(err, dict) else None
         if code == "captcha_required":
-            await cq.answer(t("download.captcha"), show_alert=True)
+            await cq.message.answer(t("download.captcha"))
         elif code == "not_configured":
-            await cq.answer(t("download.not_configured"), show_alert=True)
+            await cq.message.answer(t("download.not_configured"))
         else:
-            await cq.answer(t("download.error", detail=_err_msg(err)), show_alert=True)
+            await cq.message.answer(t("download.error", detail=_err_msg(err)))
         return
 
     results = payload.get("results") or []
     if not results:
-        await cq.answer(t("download.no_results"), show_alert=True)
+        await cq.message.answer(t("download.no_results"))
         return
 
     header = t("download.list_header", query=query)
@@ -173,7 +178,6 @@ async def on_download(
         reply_markup=torrent_list_keyboard(results),
         disable_web_page_preview=True,
     )
-    await cq.answer()
 
 
 @router.callback_query(F.data.startswith("tor:"))
@@ -193,26 +197,30 @@ async def on_torrent_pick(
         await cq.answer(t("stub.download"), show_alert=True)
         return
 
+    # Ack immediately; dl.php can take a while and we don't want the
+    # callback_query TTL to expire before we reply.
+    await cq.answer(t("download.fetching"))
+
     try:
         payload = await torrent.get_torrent_file(topic_id, tg_user_id=tg_user_id)
     except MCPClientError as exc:
         log.warning("torrent.download_failed", error=str(exc))
-        await cq.answer(t("download.error", detail=str(exc)), show_alert=True)
+        await cq.message.answer(t("download.error", detail=str(exc)))
         return
 
     if err := payload.get("error"):
         code = (err or {}).get("code") if isinstance(err, dict) else None
         if code == "captcha_required":
-            await cq.answer(t("download.captcha"), show_alert=True)
+            await cq.message.answer(t("download.captcha"))
         else:
-            await cq.answer(t("download.error", detail=_err_msg(err)), show_alert=True)
+            await cq.message.answer(t("download.error", detail=_err_msg(err)))
         return
 
     f = payload.get("file") or {}
     b64 = f.get("content_base64")
     filename = f.get("filename") or f"[rutracker.org].t{topic_id}.torrent"
     if not isinstance(b64, str):
-        await cq.answer(t("download.error", detail="empty payload"), show_alert=True)
+        await cq.message.answer(t("download.error", detail="empty payload"))
         return
 
     blob = base64.b64decode(b64)
@@ -220,7 +228,6 @@ async def on_torrent_pick(
         BufferedInputFile(blob, filename=filename),
         caption=t("download.sent_caption"),
     )
-    await cq.answer()
 
 
 @router.callback_query(F.data.startswith("b:"))

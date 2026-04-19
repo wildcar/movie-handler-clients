@@ -26,6 +26,8 @@ RU: Final[dict[str, str]] = {
     "stub.trailer": "🎬 Сервис трейлеров временно недоступен.",
     "stub.download": "⬇️ Сервис скачивания временно недоступен.",
     "download.list_header": "Раздачи «{query}»:",
+    "download.searching": "🔎 Ищу раздачи…",
+    "download.fetching": "⬇️ Скачиваю .torrent…",
     "download.no_results": "⬇️ Ничего не нашлось на rutracker.",
     "download.error": "Не удалось получить раздачи: {detail}",
     "download.captcha": (

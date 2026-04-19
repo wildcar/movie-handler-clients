@@ -323,10 +323,13 @@ async def test_download_callback_surfaces_captcha() -> None:
 
     await details_mod.on_download(cq, torrent=torrent, title_cache=cache)  # type: ignore[arg-type]
 
+    # Callback is ack'd with the "searching" toast up front; the captcha
+    # warning is delivered as a regular chat message so it survives
+    # Telegram's ~15s callback_query TTL.
     cq.answer.assert_awaited_once()
-    (body,), kwargs = cq.answer.call_args
+    cq.message.answer.assert_awaited_once()
+    (body,), _ = cq.message.answer.call_args
     assert "капч" in body.lower()
-    assert kwargs.get("show_alert") is True
 
 
 async def test_base_mcp_client_reconnects_on_session_terminated() -> None:
