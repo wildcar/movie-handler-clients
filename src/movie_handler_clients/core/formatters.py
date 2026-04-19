@@ -28,21 +28,23 @@ def _rating_line(ratings: list[dict[str, Any]]) -> str:
 
 
 def format_search_item(item: dict[str, Any]) -> str:
+    """One-line entry for the search-results list.
+
+    Deliberately skips the overview — the search endpoint returns only the
+    English one, and the list already gets long. Full (Russian) overview
+    lives in the details card.
+    """
     title = escape(str(item.get("title") or "—"))
     year = item.get("year")
     head = f"<b>{title}</b>"
     if year:
         head += f" ({escape(str(year))})"
-    overview = item.get("overview")
-    if overview:
-        truncated = overview if len(overview) <= 180 else overview[:177] + "…"
-        head += f"\n{escape(truncated)}"
     return head
 
 
 def format_details(payload: dict[str, Any]) -> str:
     """Render a ``get_movie_details`` envelope into an HTML caption."""
-    movie = payload.get("movie") or {}
+    movie = payload.get("details") or {}
     title = escape(str(movie.get("title") or "—"))
     year = movie.get("year")
     runtime = movie.get("runtime_minutes")

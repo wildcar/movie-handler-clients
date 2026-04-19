@@ -41,6 +41,17 @@ async def test_on_text_empty_short_circuits() -> None:
     msg.answer.assert_awaited_once()
 
 
+def test_split_title_year_extracts_4digit_year() -> None:
+    assert search_mod._split_title_year("Дюна 2021") == ("Дюна", 2021)
+    assert search_mod._split_title_year("Dune, 2021") == ("Dune", 2021)
+    assert search_mod._split_title_year("Blade Runner 1982 director's cut") == (
+        "Blade Runner director's cut",
+        1982,
+    )
+    assert search_mod._split_title_year("Dune") == ("Dune", None)
+    assert search_mod._split_title_year("Room 237") == ("Room 237", None)  # 3 digits
+
+
 async def test_on_text_renders_results(sample_search_payload: dict) -> None:
     msg = _msg("Dune")
     mcp = AsyncMock()

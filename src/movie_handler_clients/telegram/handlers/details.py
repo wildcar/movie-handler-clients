@@ -36,13 +36,13 @@ async def on_details(
         await cq.answer(t("details.error", detail=_err_msg(err)), show_alert=True)
         return
 
-    movie = payload.get("movie")
-    if not isinstance(movie, dict):
+    details = payload.get("details")
+    if not isinstance(details, dict):
         await cq.answer(t("details.not_found"), show_alert=True)
         return
 
     caption = format_details(payload)
-    poster = movie.get("poster_url")
+    poster = details.get("poster_url")
     kb = details_keyboard(imdb_id, query_id or None)
 
     if cq.message is None:

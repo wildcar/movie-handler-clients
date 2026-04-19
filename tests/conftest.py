@@ -43,7 +43,7 @@ def sample_search_payload() -> dict[str, object]:
 @pytest.fixture
 def sample_details_payload() -> dict[str, object]:
     return {
-        "movie": {
+        "details": {
             "imdb_id": "tt1160419",
             "title": "Dune",
             "year": 2021,
