@@ -1,0 +1,28 @@
+[Unit]
+Description=movie-trailer-mcp (streamable HTTP)
+Documentation=https://github.com/wildcar/movie-trailer-mcp
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=movie
+Group=movie
+WorkingDirectory=/opt/movie-trailer-mcp
+EnvironmentFile=/etc/movie-handler/trailer.env
+Environment=MCP_TRANSPORT=streamable-http
+Environment=MCP_HTTP_HOST=127.0.0.1
+Environment=MCP_HTTP_PORT=8766
+ExecStart=/opt/movie-trailer-mcp/.venv/bin/movie-trailer-mcp
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/movie-trailer-mcp/.cache
+
+[Install]
+WantedBy=multi-user.target

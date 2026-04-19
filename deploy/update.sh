@@ -19,10 +19,12 @@ set -euo pipefail
 
 REPOS=(
     /opt/movie-metadata-mcp
+    /opt/movie-trailer-mcp
     /opt/movie-handler-clients
 )
 SERVICES=(
     movie-metadata-mcp.service
+    movie-trailer-mcp.service
     movie-handler-telegram.service
 )
 

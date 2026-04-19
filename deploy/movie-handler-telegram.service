@@ -1,9 +1,11 @@
 [Unit]
 Description=movie-handler Telegram bot
 Documentation=https://github.com/wildcar/movie-handler-clients
-After=network-online.target movie-metadata-mcp.service
+After=network-online.target movie-metadata-mcp.service movie-trailer-mcp.service
 Wants=network-online.target
 Requires=movie-metadata-mcp.service
+# movie-trailer-mcp is optional — the bot degrades to the "coming soon"
+# message if it's not running, so we don't block on it.
 
 [Service]
 Type=simple
