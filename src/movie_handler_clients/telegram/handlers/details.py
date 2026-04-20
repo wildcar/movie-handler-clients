@@ -249,8 +249,10 @@ async def on_torrent_pick(
         kind = cached[2]
 
     if rtorrent is not None:
+        source_url = f"https://rutracker.org/forum/viewtopic.php?t={topic_id}"
         ok = await _try_send_to_rtorrent(
-            cq, rtorrent, tracker=tracker, b64=b64, kind=kind, tg_user_id=tg_user_id
+            cq, rtorrent, tracker=tracker, b64=b64, kind=kind,
+            comment=source_url, tg_user_id=tg_user_id,
         )
         if ok:
             return  # done — no fallback needed
@@ -269,6 +271,7 @@ async def _try_send_to_rtorrent(
     tracker: DownloadTracker,
     b64: str,
     kind: Kind | None,
+    comment: str | None = None,
     tg_user_id: int | None,
 ) -> bool:
     """Push the .torrent to rtorrent-mcp. Returns True on success so the
@@ -276,7 +279,7 @@ async def _try_send_to_rtorrent(
     assert cq.message is not None
     try:
         payload = await rtorrent.add_torrent(
-            torrent_file_base64=b64, kind=kind, tg_user_id=tg_user_id
+            torrent_file_base64=b64, kind=kind, comment=comment, tg_user_id=tg_user_id
         )
     except MCPClientError as exc:
         log.warning("rtorrent.add_failed", error=str(exc))

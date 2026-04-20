@@ -19,6 +19,7 @@ class RtorrentMCPClient(BaseMCPClient):
         kind: MediaKind | None = None,
         download_dir: str | None = None,
         start: bool = True,
+        comment: str | None = None,
         tg_user_id: int | None = None,
     ) -> dict[str, Any]:
         args: dict[str, Any] = {"start": start}
@@ -30,6 +31,8 @@ class RtorrentMCPClient(BaseMCPClient):
             args["kind"] = kind
         if download_dir is not None:
             args["download_dir"] = download_dir
+        if comment is not None:
+            args["comment"] = comment
         return await self.call_tool("add_torrent", args, tg_user_id=tg_user_id)
 
     async def list_downloads(
