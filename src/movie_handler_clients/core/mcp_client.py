@@ -157,23 +157,34 @@ def _extract_payload(result: Any) -> dict[str, Any]:
     """Pull the JSON dict out of an MCP ``CallToolResult``.
 
     Prefers ``structuredContent`` (newer SDKs), falls back to parsing the
-    first text content item.
+    first text content item. When the server sets ``isError=True`` the content
+    is plain text, not JSON — we re-raise it as an MCPClientError so callers
+    see a readable message instead of a parse failure.
     """
     structured = getattr(result, "structuredContent", None)
     if isinstance(structured, dict) and structured:
         return structured
 
+    is_error = bool(getattr(result, "isError", False))
     content = getattr(result, "content", None) or []
+    texts: list[str] = []
+
     for item in content:
         text = getattr(item, "text", None)
-        if isinstance(text, str):
-            try:
-                decoded = json.loads(text)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(decoded, dict):
-                return decoded
+        if not isinstance(text, str):
+            continue
+        texts.append(text)
+        try:
+            decoded = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(decoded, dict):
+            return decoded
 
+    if is_error:
+        raise MCPClientError(" ".join(texts) or "tool returned an error")
+
+    log.warning("mcp.payload_unreadable", content_texts=[t[:120] for t in texts])
     raise MCPClientError("MCP response did not contain a JSON payload")
 
 
