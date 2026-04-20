@@ -19,6 +19,7 @@ from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
 from ...core.rtorrent_client import RtorrentMCPClient
 from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
+from ..download_tracker import DownloadTracker
 from ..keyboards import details_keyboard, search_results_keyboard, torrent_list_keyboard
 from ..search_cache import SearchCache
 from ..title_cache import Kind, TitleCache
@@ -189,6 +190,7 @@ async def on_torrent_pick(
     torrent: RutrackerTorrentMCPClient | None,
     rtorrent: RtorrentMCPClient | None,
     title_cache: TitleCache,
+    tracker: DownloadTracker,
 ) -> None:
     # Callback shape: "tor:<topic_id>:<imdb_id>". The IMDb id is carried
     # so we can pull the kind hint (movie vs series) from the title cache
@@ -247,7 +249,9 @@ async def on_torrent_pick(
         kind = cached[2]
 
     if rtorrent is not None:
-        ok = await _try_send_to_rtorrent(cq, rtorrent, b64=b64, kind=kind, tg_user_id=tg_user_id)
+        ok = await _try_send_to_rtorrent(
+            cq, rtorrent, tracker=tracker, b64=b64, kind=kind, tg_user_id=tg_user_id
+        )
         if ok:
             return  # done — no fallback needed
 
@@ -262,6 +266,7 @@ async def _try_send_to_rtorrent(
     cq: CallbackQuery,
     rtorrent: RtorrentMCPClient,
     *,
+    tracker: DownloadTracker,
     b64: str,
     kind: Kind | None,
     tg_user_id: int | None,
@@ -278,13 +283,14 @@ async def _try_send_to_rtorrent(
         return False
     if err := payload.get("error"):
         log.warning("rtorrent.add_tool_error", error=err)
-        # If the server is simply unreachable, the .torrent fallback is
-        # more useful than a red error message. For all other codes (bad
-        # magnet, invalid args) we still fall back — the user just gets
-        # the file and can decide.
         return False
     dl = payload.get("download") or {}
     name = str(dl.get("name") or "").strip()
+    hash_ = str(dl.get("hash") or "").strip()
+
+    if hash_ and tg_user_id is not None:
+        tracker.track(hash_, tg_user_id, name)
+
     dest_key = "download.sent_to_server_series" if kind == "series" else "download.sent_to_server"
     from html import escape as _esc
 

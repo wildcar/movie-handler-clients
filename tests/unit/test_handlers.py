@@ -389,12 +389,15 @@ async def test_torrent_pick_sends_document() -> None:
         }
     )
 
+    from movie_handler_clients.telegram.download_tracker import DownloadTracker
+
     # No rtorrent client wired → bot falls through to answer_document.
     await details_mod.on_torrent_pick(
         cq,  # type: ignore[arg-type]
         torrent=torrent,
         rtorrent=None,
         title_cache=TitleCache(),
+        tracker=DownloadTracker(),
     )
 
     torrent.get_torrent_file.assert_awaited_once_with(42, tg_user_id=42)
@@ -429,11 +432,15 @@ async def test_torrent_pick_uploads_to_rtorrent_when_configured() -> None:
         return_value={"download": {"hash": "A" * 40, "name": "Dune"}, "error": None}
     )
 
+    from movie_handler_clients.telegram.download_tracker import DownloadTracker
+
+    tracker = DownloadTracker()
     await details_mod.on_torrent_pick(
         cq,  # type: ignore[arg-type]
         torrent=torrent,
         rtorrent=rtorrent,
         title_cache=cache,
+        tracker=tracker,
     )
 
     # rtorrent call got the kind hint from the cache and the base64 blob.
@@ -472,11 +479,14 @@ async def test_torrent_pick_falls_back_to_document_on_rtorrent_error() -> None:
         }
     )
 
+    from movie_handler_clients.telegram.download_tracker import DownloadTracker
+
     await details_mod.on_torrent_pick(
         cq,  # type: ignore[arg-type]
         torrent=torrent,
         rtorrent=rtorrent,
         title_cache=cache,
+        tracker=DownloadTracker(),
     )
 
     cq.message.answer_document.assert_awaited_once()
