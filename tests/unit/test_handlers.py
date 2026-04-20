@@ -368,10 +368,12 @@ async def test_base_mcp_client_reconnects_on_session_terminated() -> None:
 
 
 async def test_torrent_pick_sends_document() -> None:
+    from movie_handler_clients.telegram.title_cache import TitleCache
+
     cq = SimpleNamespace(
         data="tor:42",
         from_user=SimpleNamespace(id=42),
-        message=SimpleNamespace(answer_document=AsyncMock()),
+        message=SimpleNamespace(answer_document=AsyncMock(), answer=AsyncMock()),
         answer=AsyncMock(),
     )
     torrent = AsyncMock()
@@ -387,7 +389,94 @@ async def test_torrent_pick_sends_document() -> None:
         }
     )
 
-    await details_mod.on_torrent_pick(cq, torrent=torrent)  # type: ignore[arg-type]
+    # No rtorrent client wired → bot falls through to answer_document.
+    await details_mod.on_torrent_pick(
+        cq,  # type: ignore[arg-type]
+        torrent=torrent,
+        rtorrent=None,
+        title_cache=TitleCache(),
+    )
 
     torrent.get_torrent_file.assert_awaited_once_with(42, tg_user_id=42)
+    cq.message.answer_document.assert_awaited_once()
+
+
+async def test_torrent_pick_uploads_to_rtorrent_when_configured() -> None:
+    from movie_handler_clients.telegram.title_cache import TitleCache
+
+    cache = TitleCache()
+    cache.put("tt1160419", "Дюна", 2021, "movie")
+    cq = SimpleNamespace(
+        data="tor:42:tt1160419",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer_document=AsyncMock(), answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    torrent = AsyncMock()
+    torrent.get_torrent_file = AsyncMock(
+        return_value={
+            "file": {
+                "topic_id": 42,
+                "filename": "t42.torrent",
+                "content_base64": "ZA==",
+                "size_bytes": 1,
+            },
+            "error": None,
+        }
+    )
+    rtorrent = AsyncMock()
+    rtorrent.add_torrent = AsyncMock(
+        return_value={"download": {"hash": "A" * 40, "name": "Dune"}, "error": None}
+    )
+
+    await details_mod.on_torrent_pick(
+        cq,  # type: ignore[arg-type]
+        torrent=torrent,
+        rtorrent=rtorrent,
+        title_cache=cache,
+    )
+
+    # rtorrent call got the kind hint from the cache and the base64 blob.
+    rtorrent.add_torrent.assert_awaited_once()
+    kwargs = rtorrent.add_torrent.call_args.kwargs
+    assert kwargs["kind"] == "movie"
+    assert kwargs["torrent_file_base64"] == "ZA=="
+    # No document sent — the file stayed on the server.
+    cq.message.answer_document.assert_not_awaited()
+    cq.message.answer.assert_awaited_once()
+
+
+async def test_torrent_pick_falls_back_to_document_on_rtorrent_error() -> None:
+    from movie_handler_clients.telegram.title_cache import TitleCache
+
+    cache = TitleCache()
+    cache.put("tt1160419", "Дюна", 2021, "movie")
+    cq = SimpleNamespace(
+        data="tor:42:tt1160419",
+        from_user=SimpleNamespace(id=42),
+        message=SimpleNamespace(answer_document=AsyncMock(), answer=AsyncMock()),
+        answer=AsyncMock(),
+    )
+    torrent = AsyncMock()
+    torrent.get_torrent_file = AsyncMock(
+        return_value={
+            "file": {"filename": "t.torrent", "content_base64": "ZA==", "size_bytes": 1},
+            "error": None,
+        }
+    )
+    rtorrent = AsyncMock()
+    rtorrent.add_torrent = AsyncMock(
+        return_value={
+            "download": None,
+            "error": {"code": "rtorrent_unreachable", "message": "timed out"},
+        }
+    )
+
+    await details_mod.on_torrent_pick(
+        cq,  # type: ignore[arg-type]
+        torrent=torrent,
+        rtorrent=rtorrent,
+        title_cache=cache,
+    )
+
     cq.message.answer_document.assert_awaited_once()

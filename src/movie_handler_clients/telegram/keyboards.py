@@ -29,7 +29,9 @@ def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> In
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def torrent_list_keyboard(results: list[dict[str, object]]) -> InlineKeyboardMarkup:
+def torrent_list_keyboard(
+    results: list[dict[str, object]], *, imdb_id: str = ""
+) -> InlineKeyboardMarkup:
     """One button per torrent.
 
     Layout: ``#ID  | • SIZE • QUALITY • HDR • 🌱SEEDS``. The leading bar
@@ -56,7 +58,10 @@ def torrent_list_keyboard(results: list[dict[str, object]]) -> InlineKeyboardMar
         if isinstance(seeders, int):
             parts.append(f"🌱{seeders}")
         label = " • ".join(parts)
-        rows.append([InlineKeyboardButton(text=label[:64], callback_data=f"tor:{topic_id}")])
+        # Include the IMDb id so the pick handler can route the download
+        # to the correct directory (movies vs series) on the media server.
+        cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
+        rows.append([InlineKeyboardButton(text=label[:64], callback_data=cb)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

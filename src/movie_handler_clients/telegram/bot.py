@@ -11,6 +11,7 @@ from aiogram import Bot, Dispatcher
 from ..core.config import Settings, get_settings
 from ..core.logging_conf import configure_logging
 from ..core.mcp_client import MovieMetadataMCPClient
+from ..core.rtorrent_client import RtorrentMCPClient
 from ..core.torrent_client import RutrackerTorrentMCPClient
 from ..core.traffic_log import TrafficLog
 from ..core.trailer_client import MovieTrailerMCPClient
@@ -68,6 +69,27 @@ async def _run(settings: Settings) -> None:
                 error=str(exc),
             )
 
+        # rtorrent MCP is opt-in: the URL defaults to None. When set, the
+        # download flow pushes the .torrent straight to the media server;
+        # when unset (or unreachable), we fall back to sending the file
+        # to the user as a Telegram document.
+        rtorrent: RtorrentMCPClient | None = None
+        if settings.rtorrent_mcp_url:
+            try:
+                rtorrent = await stack.enter_async_context(
+                    RtorrentMCPClient(
+                        url=settings.rtorrent_mcp_url,
+                        auth_token=settings.mcp_auth_token,
+                        traffic_log=traffic,
+                    )
+                )
+            except (Exception, BaseExceptionGroup) as exc:
+                log.warning(
+                    "rtorrent_mcp.unavailable",
+                    url=settings.rtorrent_mcp_url,
+                    error=str(exc),
+                )
+
         bot = Bot(token=settings.telegram_bot_token)
         stack.push_async_callback(bot.session.close)
 
@@ -77,6 +99,7 @@ async def _run(settings: Settings) -> None:
             mcp=mcp,
             trailer=trailer,
             torrent=torrent,
+            rtorrent=rtorrent,
             search_cache=SearchCache(),
             title_cache=TitleCache(),
         )

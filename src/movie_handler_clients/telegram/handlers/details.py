@@ -16,11 +16,12 @@ from ...core.formatters import (
 )
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
+from ...core.rtorrent_client import RtorrentMCPClient
 from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
 from ..keyboards import details_keyboard, search_results_keyboard, torrent_list_keyboard
 from ..search_cache import SearchCache
-from ..title_cache import TitleCache
+from ..title_cache import Kind, TitleCache
 
 router = Router(name="details")
 log = structlog.get_logger(__name__)
@@ -56,10 +57,12 @@ async def on_details(
     # carries the IMDb id — we don't want to re-fetch details just to
     # build the rutracker query.
     year_val = details.get("year")
+    kind_hint: Kind = "series" if details.get("kind") == "series" else "movie"
     title_cache.put(
         imdb_id,
         str(details.get("title") or details.get("original_title") or ""),
         int(year_val) if isinstance(year_val, int) else None,
+        kind_hint,
     )
 
     caption = format_details(payload)
@@ -140,7 +143,7 @@ async def on_download(
         # download tap — tell the user to reopen the card.
         await cq.answer(t("download.reopen_card"), show_alert=True)
         return
-    title, year = cached
+    title, year, _kind = cached
     query = f"{title} {year}" if year else title
 
     # Stop the button spinner immediately — the rutracker search can take
@@ -175,7 +178,7 @@ async def on_download(
     await cq.message.answer(
         f"{header}\n{body}",
         parse_mode="HTML",
-        reply_markup=torrent_list_keyboard(results),
+        reply_markup=torrent_list_keyboard(results, imdb_id=imdb_id),
         disable_web_page_preview=True,
     )
 
@@ -184,13 +187,23 @@ async def on_download(
 async def on_torrent_pick(
     cq: CallbackQuery,
     torrent: RutrackerTorrentMCPClient | None,
+    rtorrent: RtorrentMCPClient | None,
+    title_cache: TitleCache,
 ) -> None:
-    topic_id_str = (cq.data or "")[4:]
+    # Callback shape: "tor:<topic_id>:<imdb_id>". The IMDb id is carried
+    # so we can pull the kind hint (movie vs series) from the title cache
+    # without another round-trip — it decides which directory on the
+    # media server the download lands in.
+    parts = (cq.data or "").split(":", 2)
+    if len(parts) < 2:
+        await cq.answer()
+        return
     try:
-        topic_id = int(topic_id_str)
+        topic_id = int(parts[1])
     except ValueError:
         await cq.answer()
         return
+    imdb_id = parts[2] if len(parts) > 2 else ""
     tg_user_id = cq.from_user.id if cq.from_user else None
 
     if torrent is None or cq.message is None:
@@ -223,11 +236,61 @@ async def on_torrent_pick(
         await cq.message.answer(t("download.error", detail="empty payload"))
         return
 
+    # Prefer sending the torrent to the media server; fall back to
+    # shipping the .torrent as a Telegram document only when rtorrent-mcp
+    # is not configured or errors out. Cached kind (movie/series) routes
+    # the payload to the matching /mnt/storage/Media/Video/{Movie,Series}
+    # directory on the server side.
+    kind: Kind | None = None
+    cached = title_cache.get(imdb_id) if imdb_id else None
+    if cached is not None:
+        kind = cached[2]
+
+    if rtorrent is not None:
+        ok = await _try_send_to_rtorrent(cq, rtorrent, b64=b64, kind=kind, tg_user_id=tg_user_id)
+        if ok:
+            return  # done — no fallback needed
+
     blob = base64.b64decode(b64)
     await cq.message.answer_document(
         BufferedInputFile(blob, filename=filename),
         caption=t("download.sent_caption"),
     )
+
+
+async def _try_send_to_rtorrent(
+    cq: CallbackQuery,
+    rtorrent: RtorrentMCPClient,
+    *,
+    b64: str,
+    kind: Kind | None,
+    tg_user_id: int | None,
+) -> bool:
+    """Push the .torrent to rtorrent-mcp. Returns True on success so the
+    outer handler can skip the Telegram-document fallback."""
+    assert cq.message is not None
+    try:
+        payload = await rtorrent.add_torrent(
+            torrent_file_base64=b64, kind=kind, tg_user_id=tg_user_id
+        )
+    except MCPClientError as exc:
+        log.warning("rtorrent.add_failed", error=str(exc))
+        return False
+    if err := payload.get("error"):
+        log.warning("rtorrent.add_tool_error", error=err)
+        # If the server is simply unreachable, the .torrent fallback is
+        # more useful than a red error message. For all other codes (bad
+        # magnet, invalid args) we still fall back — the user just gets
+        # the file and can decide.
+        return False
+    dl = payload.get("download") or {}
+    name = str(dl.get("name") or "").strip()
+    dest_key = "download.sent_to_server_series" if kind == "series" else "download.sent_to_server"
+    from html import escape as _esc
+
+    message = t(dest_key, name=_esc(name)) if name else t("download.sent_to_server_noname")
+    await cq.message.answer(message, parse_mode="HTML")
+    return True
 
 
 @router.callback_query(F.data.startswith("b:"))

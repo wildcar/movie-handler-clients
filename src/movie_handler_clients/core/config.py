@@ -38,6 +38,14 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8767/mcp",
         description="Streamable-HTTP endpoint of the rutracker-torrent-mcp server.",
     )
+    rtorrent_mcp_url: str | None = Field(
+        None,
+        description=(
+            "Streamable-HTTP endpoint of rtorrent-mcp on the media server. "
+            "When unset, the download flow falls back to sending the .torrent "
+            "file to the user directly."
+        ),
+    )
     mcp_auth_token: str = Field(
         ...,
         description="Bearer token sent to every MCP server request.",
