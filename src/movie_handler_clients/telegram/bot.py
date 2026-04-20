@@ -146,9 +146,9 @@ async def _run(settings: Settings) -> None:
             title_cache=TitleCache(),
             tracker=tracker,
         )
+        dp.include_router(status_handler.router)
         dp.include_router(search_handler.router)
         dp.include_router(details_handler.router)
-        dp.include_router(status_handler.router)
 
         log.info("bot.starting")
         if rtorrent is not None:

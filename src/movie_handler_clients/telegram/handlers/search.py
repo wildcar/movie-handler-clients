@@ -6,7 +6,7 @@ import re
 from typing import Any
 
 import structlog
-from aiogram import Router
+from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
@@ -25,7 +25,7 @@ async def on_start(message: Message) -> None:
     await message.answer(t("start.greeting"))
 
 
-@router.message()
+@router.message(F.text.regexp(r"^[^/]"))
 async def on_text(
     message: Message,
     mcp: MovieMetadataMCPClient,
