@@ -67,7 +67,7 @@ async def on_status(
 def _format_row(dl: dict[str, Any]) -> str:
     name = str(dl.get("name") or "?")
     size = int(dl.get("size_bytes") or 0)
-    done = int(dl.get("bytes_done") or 0)
+    done = int(dl.get("completed_bytes") or 0)
     rate = int(dl.get("down_rate") or 0)
     state = str(dl.get("state") or "")
 
