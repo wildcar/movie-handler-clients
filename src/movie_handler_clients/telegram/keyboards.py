@@ -77,21 +77,22 @@ def torrent_list_keyboard(
     rows: list[list[InlineKeyboardButton]] = []
     for label, r in pinned:
         topic_id = int(r["topic_id"])  # type: ignore[arg-type]
-        # Multi-line button: title on line 1, meta (quality · size · seeders)
-        # on line 2. Telegram wraps newlines in inline-button labels.
-        meta_parts: list[str] = []
-        quality = r.get("quality")
-        if quality:
-            meta_parts.append(str(quality))
+        # Single-line button: Telegram clients truncate multi-line labels
+        # mid-text (iOS shows "До 5 GB.."), so we flatten everything into
+        # one compact row — bucket label, size, quality, seeders.
+        parts: list[str] = [label]
         size_b = r.get("size_bytes")
         if isinstance(size_b, int) and size_b > 0:
-            meta_parts.append(_human_size_spaced(size_b))
+            parts.append(_human_size_spaced(size_b))
+        quality = r.get("quality")
+        if quality:
+            parts.append(str(quality))
         seeders = r.get("seeders")
         if isinstance(seeders, int):
-            meta_parts.append(f"👤 {seeders}")
-        btn_label = f"{label}\n{' · '.join(meta_parts)}" if meta_parts else label
+            parts.append(f"👤{seeders}")
+        btn_label = " · ".join(parts)
         cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
-        rows.append([InlineKeyboardButton(text=btn_label, callback_data=cb)])
+        rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=cb)])
 
     if rest_count > 0:
         from ..core.i18n import t as _t
@@ -199,8 +200,9 @@ def trailer_alternatives_keyboard(
             lang_label = lang.upper()
         else:
             lang_label = "—"
-        btn_label = f"{icon} {title}\n{kind_label} · {lang_label}"
-        rows.append([InlineKeyboardButton(text=btn_label, callback_data=f"tr:{imdb_id}:{i}")])
+        # Single-line (Telegram truncates \n on iOS/Android).
+        btn_label = f"{icon} {title} · {kind_label} · {lang_label}"
+        rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=f"tr:{imdb_id}:{i}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
