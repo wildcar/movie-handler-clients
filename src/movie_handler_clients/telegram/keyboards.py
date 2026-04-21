@@ -65,7 +65,7 @@ def torrent_list_keyboard(
 
     pinned_ids: set[int] = set()
     pinned: list[tuple[str, dict]] = []
-    for label, pick in [("До 5 GB", small), ("5–15 GB", mid), ("HDR / 4K", hdr)]:
+    for label, pick in [("До 5 GB", small), ("5–15 GB", mid), ("HDR", hdr)]:
         if pick is not None:
             tid = int(pick["topic_id"])  # type: ignore[arg-type]
             if tid not in pinned_ids:
@@ -77,16 +77,21 @@ def torrent_list_keyboard(
     rows: list[list[InlineKeyboardButton]] = []
     for label, r in pinned:
         topic_id = int(r["topic_id"])  # type: ignore[arg-type]
-        parts: list[str] = [label]
+        # Multi-line button: title on line 1, meta (quality · size · seeders)
+        # on line 2. Telegram wraps newlines in inline-button labels.
+        meta_parts: list[str] = []
+        quality = r.get("quality")
+        if quality:
+            meta_parts.append(str(quality))
         size_b = r.get("size_bytes")
         if isinstance(size_b, int) and size_b > 0:
-            parts.append(_human_size(size_b))
+            meta_parts.append(_human_size_spaced(size_b))
         seeders = r.get("seeders")
         if isinstance(seeders, int):
-            parts.append(f"🌱{seeders}")
-        btn_label = " · ".join(parts)
+            meta_parts.append(f"👤 {seeders}")
+        btn_label = f"{label}\n{' · '.join(meta_parts)}" if meta_parts else label
         cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
-        rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=cb)])
+        rows.append([InlineKeyboardButton(text=btn_label, callback_data=cb)])
 
     if rest_count > 0:
         from ..core.i18n import t as _t
@@ -145,6 +150,58 @@ def _human_size(n: int) -> str:
     if n >= 1024:
         return f"{n // 1024}KB"
     return f"{n}B"
+
+
+def _human_size_spaced(n: int) -> str:
+    """Human size with a space before the unit (design-matching)."""
+    if n >= 1024**4:
+        return f"{n / 1024**4:.1f} TB"
+    if n >= 1024**3:
+        return f"{n / 1024**3:.1f} GB"
+    if n >= 1024**2:
+        return f"{n // 1024**2} MB"
+    if n >= 1024:
+        return f"{n // 1024} KB"
+    return f"{n} B"
+
+
+_TRAILER_ICONS = {"trailer": "🎬", "teaser": "🎞", "clip": "📼", "featurette": "🎥"}
+_TRAILER_KIND_LABEL = {
+    "trailer": "Трейлер",
+    "teaser": "Тизер",
+    "clip": "Клип",
+    "featurette": "Фичуретка",
+}
+
+
+def trailer_alternatives_keyboard(
+    trailers: list[dict[str, object]], *, imdb_id: str, start_index: int = 1
+) -> InlineKeyboardMarkup:
+    """Keyboard for the secondary trailers (all but the main one).
+
+    ``start_index`` is the offset into the full trailers list — the main
+    trailer lives at index 0 and is posted as a preview message, so we
+    start at 1 here. The callback carries the absolute index so the pick
+    handler can look up the trailer in the cache.
+    """
+    rows: list[list[InlineKeyboardButton]] = []
+    for i, trl in enumerate(trailers, start=start_index):
+        kind = str(trl.get("kind") or "trailer")
+        icon = _TRAILER_ICONS.get(kind, "🎬")
+        kind_label = _TRAILER_KIND_LABEL.get(kind, "Видео")
+        title = str(trl.get("title") or kind_label)
+        lang = trl.get("language")
+        if lang == "ru":
+            lang_label = "RU"
+        elif lang == "en":
+            lang_label = "EN"
+        elif isinstance(lang, str) and lang:
+            lang_label = lang.upper()
+        else:
+            lang_label = "—"
+        btn_label = f"{icon} {title}\n{kind_label} · {lang_label}"
+        rows.append([InlineKeyboardButton(text=btn_label, callback_data=f"tr:{imdb_id}:{i}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def details_keyboard(imdb_id: str, query_id: str | None) -> InlineKeyboardMarkup:

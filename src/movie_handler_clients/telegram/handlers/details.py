@@ -11,7 +11,6 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 from ...core.formatters import (
     format_details,
     format_search_item,
-    format_torrent_list,
     format_trailer_caption,
 )
 from ...core.i18n import t
@@ -20,10 +19,17 @@ from ...core.rtorrent_client import RtorrentMCPClient
 from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
 from ..download_tracker import DownloadTracker
-from ..keyboards import details_keyboard, search_results_keyboard, torrent_all_keyboard, torrent_list_keyboard
+from ..keyboards import (
+    details_keyboard,
+    search_results_keyboard,
+    torrent_all_keyboard,
+    torrent_list_keyboard,
+    trailer_alternatives_keyboard,
+)
 from ..search_cache import SearchCache
 from ..title_cache import Kind, TitleCache
 from ..torrent_cache import TorrentCache
+from ..trailer_cache import TrailerCache
 
 router = Router(name="details")
 log = structlog.get_logger(__name__)
@@ -93,6 +99,7 @@ async def on_details(
 async def on_trailer(
     cq: CallbackQuery,
     trailer: MovieTrailerMCPClient | None,
+    trailer_cache: TrailerCache,
 ) -> None:
     imdb_id = (cq.data or "")[2:]
     tg_user_id = cq.from_user.id if cq.from_user else None
@@ -118,11 +125,50 @@ async def on_trailer(
         await cq.answer(t("trailer.not_found"), show_alert=True)
         return
 
-    # Post each trailer as its own message so Telegram builds a preview
-    # card with the video player for each one.
-    for trl in trailers:
-        caption = format_trailer_caption(trl)
-        await cq.message.answer(caption, parse_mode="HTML", disable_web_page_preview=False)
+    # TrailersV2: main trailer as its own message (Telegram builds the
+    # YouTube preview card from the URL), then a compact "Другие варианты:"
+    # bubble with the rest as inline buttons — taps reveal each URL.
+    trailer_cache.put(imdb_id, trailers)
+
+    main = trailers[0]
+    await cq.message.answer(
+        format_trailer_caption(main), parse_mode="HTML", disable_web_page_preview=False
+    )
+
+    if len(trailers) > 1:
+        await cq.message.answer(
+            t("trailer.alternatives"),
+            reply_markup=trailer_alternatives_keyboard(
+                trailers[1:], imdb_id=imdb_id, start_index=1
+            ),
+        )
+    await cq.answer()
+
+
+@router.callback_query(F.data.startswith("tr:"))
+async def on_trailer_pick(
+    cq: CallbackQuery,
+    trailer_cache: TrailerCache,
+) -> None:
+    parts = (cq.data or "").split(":", 2)
+    if len(parts) < 3 or cq.message is None:
+        await cq.answer()
+        return
+    imdb_id = parts[1]
+    try:
+        idx = int(parts[2])
+    except ValueError:
+        await cq.answer()
+        return
+    trailers = trailer_cache.get(imdb_id)
+    if not trailers or idx >= len(trailers):
+        await cq.answer(t("trailer.not_found"), show_alert=True)
+        return
+    await cq.message.answer(
+        format_trailer_caption(trailers[idx]),
+        parse_mode="HTML",
+        disable_web_page_preview=False,
+    )
     await cq.answer()
 
 
@@ -179,10 +225,10 @@ async def on_download(
     # Cache results so the «Показать ещё» callback can show the full list.
     torrent_cache.put(imdb_id, results)
 
-    header = t("download.list_header", query=query)
-    body = format_torrent_list(results)
+    from html import escape as _esc
+    text = t("download.list_header", query=_esc(query), n=len(results))
     await cq.message.answer(
-        f"{header}\n{body}",
+        text,
         parse_mode="HTML",
         reply_markup=torrent_list_keyboard(results, imdb_id=imdb_id),
         disable_web_page_preview=True,
