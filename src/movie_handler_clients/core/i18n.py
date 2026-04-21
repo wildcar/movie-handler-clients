@@ -53,6 +53,8 @@ RU: Final[dict[str, str]] = {
     "trailer.kind.other": "Видео",
     "download.complete": "✅ Закачка завершена: <b>{name}</b>",
     "download.complete_noname": "✅ Закачка завершена.",
+    "download.show_all": "Показать ещё {n} ▾",
+    "download.all_header": "Все раздачи:",
     "status.header": "Твои закачки:",
     "status.no_downloads": "У тебя нет отслеживаемых закачек.",
     "status.not_configured": "⬇️ Сервер закачек не настроен.",

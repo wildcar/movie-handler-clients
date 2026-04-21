@@ -23,6 +23,7 @@ from .handlers import search as search_handler
 from .handlers import status as status_handler
 from .search_cache import SearchCache
 from .title_cache import TitleCache
+from .torrent_cache import TorrentCache
 
 log = structlog.get_logger(__name__)
 
@@ -144,6 +145,7 @@ async def _run(settings: Settings) -> None:
             rtorrent=rtorrent,
             search_cache=SearchCache(),
             title_cache=TitleCache(),
+            torrent_cache=TorrentCache(),
             tracker=tracker,
         )
         dp.include_router(status_handler.router)

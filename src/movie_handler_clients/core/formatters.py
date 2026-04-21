@@ -81,7 +81,7 @@ def format_search_item(item: dict[str, Any]) -> str:
 
 
 def format_details(payload: dict[str, Any]) -> str:
-    """Render a ``get_movie_details`` envelope into an HTML caption."""
+    """Render a ``get_movie_details`` envelope into an HTML caption (DetailsV2 layout)."""
     movie = payload.get("details") or {}
     kind = movie.get("kind") or "movie"
     icon = "📺" if kind == "series" else "🎬"
@@ -90,28 +90,58 @@ def format_details(payload: dict[str, Any]) -> str:
     year = movie.get("year")
     runtime = movie.get("runtime_minutes")
     genres = movie.get("genres") or []
+    directors = movie.get("directors") or []
+    cast = movie.get("cast") or []
     overview_ru = movie.get("overview_ru") or movie.get("overview")
     ratings = movie.get("ratings") or []
 
     lines: list[str] = []
-    head = f"{icon} <b>{title}</b>"
+
+    # Title line with icon
+    lines.append(f"{icon} <b>{title}</b>")
+
+    # Original title + year as italic subtitle
+    sub: list[str] = []
     if original and str(original) != str(movie.get("title")):
-        head += f" <i>({escape(str(original))})</i>"
+        sub.append(escape(str(original)))
     if year:
-        head += f" — {escape(str(year))}"
-    lines.append(head)
+        sub.append(str(year))
+    if sub:
+        lines.append(f"<i>{' · '.join(sub)}</i>")
 
-    meta_bits: list[str] = []
+    # Labeled metadata rows
+    def row(label: str, value: str) -> str:
+        return f"<b>{label}:</b> {value}"
+
     if runtime:
-        meta_bits.append(f"{runtime} мин")
+        h, m = divmod(int(runtime), 60)
+        rt = f"{h} ч {m} мин" if h else f"{m} мин"
+        lines.append(row("Длительность", rt))
     if genres:
-        meta_bits.append(", ".join(escape(str(g)) for g in genres))
-    if meta_bits:
-        lines.append(" • ".join(meta_bits))
+        lines.append(row("Жанры", ", ".join(escape(str(g)) for g in genres)))
+    if directors:
+        lines.append(row("Режиссёр", escape(", ".join(str(d) for d in directors[:2]))))
+    if cast:
+        lines.append(row("В ролях", escape(", ".join(str(a) for a in cast[:4]))))
 
-    rating = _rating_line(ratings)
-    if rating:
-        lines.append(f"⭐ {escape(rating)}")
+    # Compact ratings: 🟢 IMDb 8.5 · 🟡 TMDB 7.9
+    rating_parts: list[str] = []
+    for r in ratings:
+        val = r.get("value")
+        scale = r.get("scale") or 10.0
+        src = r.get("source", "?")
+        if val is None:
+            continue
+        try:
+            val_f, scale_f = float(val), float(scale)
+        except (TypeError, ValueError):
+            continue
+        badge = _rating_badge(val_f, scale_f)
+        label = _RATING_LABELS.get(str(src), str(src))
+        number = _format_rating_value(val_f, scale_f)
+        rating_parts.append(f"{badge} {label} {number}")
+    if rating_parts:
+        lines.append(row("Рейтинги", " · ".join(rating_parts)))
 
     if overview_ru:
         lines.append("")

@@ -10,7 +10,6 @@ from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
-from ...core.formatters import format_search_item
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
 from ..keyboards import search_results_keyboard
@@ -83,16 +82,18 @@ async def on_text(
     ordered = movies + series
     query_id = search_cache.put(query, ordered)
 
-    sections: list[str] = [t("search.results_header", query=query)]
+    # SearchV2: header + compact count summary; items live in the keyboard.
+    summary_parts: list[str] = []
     if movies:
-        sections.append(t("search.section.movies"))
-        sections.extend(format_search_item(i) for i in movies)
+        summary_parts.append(f"🎬 {len(movies)}")
     if series:
-        sections.append(t("search.section.series"))
-        sections.extend(format_search_item(i) for i in series)
+        summary_parts.append(f"📺 {len(series)}")
+    text = t("search.results_header", query=query)
+    if summary_parts:
+        text += "\n" + " · ".join(summary_parts)
 
     await message.answer(
-        "\n".join(sections),
+        text,
         parse_mode="HTML",
         reply_markup=search_results_keyboard(ordered, query_id),
         disable_web_page_preview=True,

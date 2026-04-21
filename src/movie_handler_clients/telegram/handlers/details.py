@@ -20,9 +20,10 @@ from ...core.rtorrent_client import RtorrentMCPClient
 from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
 from ..download_tracker import DownloadTracker
-from ..keyboards import details_keyboard, search_results_keyboard, torrent_list_keyboard
+from ..keyboards import details_keyboard, search_results_keyboard, torrent_all_keyboard, torrent_list_keyboard
 from ..search_cache import SearchCache
 from ..title_cache import Kind, TitleCache
+from ..torrent_cache import TorrentCache
 
 router = Router(name="details")
 log = structlog.get_logger(__name__)
@@ -130,6 +131,7 @@ async def on_download(
     cq: CallbackQuery,
     torrent: RutrackerTorrentMCPClient | None,
     title_cache: TitleCache,
+    torrent_cache: TorrentCache,
 ) -> None:
     imdb_id = (cq.data or "")[3:]
     tg_user_id = cq.from_user.id if cq.from_user else None
@@ -173,6 +175,9 @@ async def on_download(
     if not results:
         await cq.message.answer(t("download.no_results"))
         return
+
+    # Cache results so the «Показать ещё» callback can show the full list.
+    torrent_cache.put(imdb_id, results)
 
     header = t("download.list_header", query=query)
     body = format_torrent_list(results)
@@ -300,6 +305,23 @@ async def _try_send_to_rtorrent(
     message = t(dest_key, name=_esc(name)) if name else t("download.sent_to_server_noname")
     await cq.message.answer(message, parse_mode="HTML")
     return True
+
+
+@router.callback_query(F.data.startswith("torall:"))
+async def on_torrent_show_all(
+    cq: CallbackQuery,
+    torrent_cache: TorrentCache,
+) -> None:
+    imdb_id = (cq.data or "")[7:]
+    results = torrent_cache.get(imdb_id) if imdb_id else None
+    if not results or cq.message is None:
+        await cq.answer()
+        return
+    await cq.message.answer(
+        t("download.all_header"),
+        reply_markup=torrent_all_keyboard(results, imdb_id=imdb_id),
+    )
+    await cq.answer()
 
 
 @router.callback_query(F.data.startswith("b:"))
