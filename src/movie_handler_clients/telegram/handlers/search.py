@@ -10,6 +10,7 @@ from aiogram import F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import Message
 
+from ...core.formatters import format_search_item, plural_ru
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
 from ..keyboards import search_results_keyboard
@@ -82,18 +83,31 @@ async def on_text(
     ordered = movies + series
     query_id = search_cache.put(query, ordered)
 
-    # SearchV2: header + compact count summary; items live in the keyboard.
+    # SearchV2 (revised): header + count summary with Russian plurals,
+    # then per-kind sections listing title/year/country/rating.
     summary_parts: list[str] = []
     if movies:
-        summary_parts.append(f"🎬 {len(movies)}")
+        summary_parts.append(
+            f"🎦 {len(movies)} {plural_ru(len(movies), ('фильм', 'фильма', 'фильмов'))}"
+        )
     if series:
-        summary_parts.append(f"📺 {len(series)}")
-    text = t("search.results_header", query=query)
+        summary_parts.append(
+            f"🧼 {len(series)} {plural_ru(len(series), ('сериал', 'сериала', 'сериалов'))}"
+        )
+    lines: list[str] = [t("search.results_header", query=query)]
     if summary_parts:
-        text += "\n" + " · ".join(summary_parts)
+        lines.append(" · ".join(summary_parts))
+    if movies:
+        lines.append("")
+        lines.append(t("search.section.movies"))
+        lines.extend(format_search_item(i) for i in movies)
+    if series:
+        lines.append("")
+        lines.append(t("search.section.series"))
+        lines.extend(format_search_item(i) for i in series)
 
     await message.answer(
-        text,
+        "\n".join(lines),
         parse_mode="HTML",
         reply_markup=search_results_keyboard(ordered, query_id),
         disable_web_page_preview=True,

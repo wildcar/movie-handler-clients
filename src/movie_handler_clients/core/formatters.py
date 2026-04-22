@@ -65,19 +65,43 @@ def _rating_line(ratings: list[dict[str, Any]]) -> str:
 def format_search_item(item: dict[str, Any]) -> str:
     """One-line entry for the search-results list.
 
-    Shows the localized (ru-RU) title with the original title in parens when
-    they differ, plus the year. Overview is deliberately omitted — the list
-    gets long; full description lives in the details card.
+    Layout: ``<b>Title</b>, YYYY, Country 🟢 7.9`` — mirrors the list in
+    the SearchV2 design. Country / rating are rendered only when the
+    metadata MCP provides them (rating is `vote_average`, country is
+    mapped from origin_country / original_language on the MCP side).
     """
     title = escape(str(item.get("title") or "—"))
-    original = item.get("original_title")
     year = item.get("year")
-    line = f"<b>{title}</b>"
-    if original and str(original) != str(item.get("title")):
-        line += f" <i>({escape(str(original))})</i>"
+    country = item.get("country")
+    rating = item.get("rating")
+
+    head = f"<b>{title}</b>"
+    tail_parts: list[str] = []
     if year:
-        line += f" — {escape(str(year))}"
+        tail_parts.append(escape(str(year)))
+    if isinstance(country, str) and country:
+        tail_parts.append(escape(country))
+    line = head + (", " + ", ".join(tail_parts) if tail_parts else "")
+
+    if isinstance(rating, int | float) and rating > 0:
+        try:
+            val = float(rating)
+        except (TypeError, ValueError):
+            val = 0.0
+        if val > 0:
+            line += f" {_rating_badge(val, 10.0)} {val:.1f}"
+
     return line
+
+
+def plural_ru(n: int, forms: tuple[str, str, str]) -> str:
+    """Russian plural selector: (1, 2–4, 5+). Used for 'N фильм(а/ов)' etc."""
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return forms[0]
+    if 2 <= n % 10 <= 4 and (n % 100 < 10 or n % 100 >= 20):
+        return forms[1]
+    return forms[2]
 
 
 def format_details(payload: dict[str, Any]) -> str:

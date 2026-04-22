@@ -17,7 +17,7 @@ def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> In
         imdb_id = item.get("imdb_id")
         if not imdb_id:
             continue
-        icon = "📺" if item.get("kind") == "series" else "🎬"
+        icon = "🧼" if item.get("kind") == "series" else "🎦"
         title = str(item.get("title") or "—")
         year = item.get("year")
         label = f"{icon} {title}"

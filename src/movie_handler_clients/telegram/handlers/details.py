@@ -12,6 +12,7 @@ from ...core.formatters import (
     format_details,
     format_search_item,
     format_trailer_caption,
+    plural_ru,
 )
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
@@ -381,19 +382,30 @@ async def on_back(
         await cq.answer()
         return
     query, results = entry
-    # Cache stores results already ordered (movies then series, year desc);
-    # splitting by kind here keeps the section headers consistent.
     movies = [r for r in results if r.get("kind") != "series"]
     series = [r for r in results if r.get("kind") == "series"]
-    sections: list[str] = [t("search.results_header", query=query)]
+    summary_parts: list[str] = []
     if movies:
-        sections.append(t("search.section.movies"))
-        sections.extend(format_search_item(i) for i in movies)
+        summary_parts.append(
+            f"🎦 {len(movies)} {plural_ru(len(movies), ('фильм', 'фильма', 'фильмов'))}"
+        )
     if series:
-        sections.append(t("search.section.series"))
-        sections.extend(format_search_item(i) for i in series)
+        summary_parts.append(
+            f"🧼 {len(series)} {plural_ru(len(series), ('сериал', 'сериала', 'сериалов'))}"
+        )
+    lines: list[str] = [t("search.results_header", query=query)]
+    if summary_parts:
+        lines.append(" · ".join(summary_parts))
+    if movies:
+        lines.append("")
+        lines.append(t("search.section.movies"))
+        lines.extend(format_search_item(i) for i in movies)
+    if series:
+        lines.append("")
+        lines.append(t("search.section.series"))
+        lines.extend(format_search_item(i) for i in series)
     await cq.message.answer(
-        "\n".join(sections),
+        "\n".join(lines),
         parse_mode="HTML",
         reply_markup=search_results_keyboard(results, query_id),
         disable_web_page_preview=True,
