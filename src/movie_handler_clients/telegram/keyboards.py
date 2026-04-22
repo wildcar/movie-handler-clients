@@ -76,15 +76,12 @@ def _format_torrent_label(r: dict[str, object]) -> str:
     return " · ".join(parts)
 
 
-def torrent_list_keyboard(
-    results: list[dict[str, object]], *, imdb_id: str = ""
-) -> InlineKeyboardMarkup:
-    """TorrentsV2: three pinned picks + «Показать ещё» button.
+def pinned_torrents(results: list[dict[str, object]]) -> list[dict[str, object]]:
+    """Return the three bucketed picks in order: ≤5 GB → 5–15 GB → HDR.
 
-    Picks highest-seeder torrent in each bucket: (1) ≤5 GB, (2) 5–15 GB,
-    (3) HDR present. Each pinned button gets a 🌕/🌎/🌞 prefix; the label
-    format is identical to the full-list buttons so the two views read
-    the same — only the category ordering differs.
+    Each bucket is won by the highest-seeder entry; duplicates across
+    buckets are kept only in their first appearance so we never pin the
+    same row twice.
     """
     valid = [r for r in results if isinstance(r.get("topic_id"), int)]
 
@@ -100,20 +97,39 @@ def torrent_list_keyboard(
         matches = [r for r in valid if pred(r)]
         return max(matches, key=_seeds) if matches else None
 
-    small = _best(lambda r: 0 < _size(r) <= _5GB)
-    mid = _best(lambda r: _5GB < _size(r) <= _15GB)
-    hdr = _best(lambda r: bool(r.get("hdr")))
+    picks = [
+        _best(lambda r: 0 < _size(r) <= _5GB),
+        _best(lambda r: _5GB < _size(r) <= _15GB),
+        _best(lambda r: bool(r.get("hdr"))),
+    ]
 
-    pinned_ids: set[int] = set()
-    pinned: list[dict] = []
-    for pick in (small, mid, hdr):
-        if pick is not None:
-            tid = int(pick["topic_id"])  # type: ignore[arg-type]
-            if tid not in pinned_ids:
-                pinned_ids.add(tid)
-                pinned.append(pick)
+    seen: set[int] = set()
+    out: list[dict[str, object]] = []
+    for p in picks:
+        if p is None:
+            continue
+        tid = int(p["topic_id"])  # type: ignore[arg-type]
+        if tid in seen:
+            continue
+        seen.add(tid)
+        out.append(p)
+    return out
 
-    rest_count = sum(1 for r in valid if r.get("topic_id") not in pinned_ids)
+
+def torrent_list_keyboard(
+    results: list[dict[str, object]], *, imdb_id: str = ""
+) -> InlineKeyboardMarkup:
+    """TorrentsV2: three pinned picks + «Показать ещё» button.
+
+    Each pinned button gets a 🌕/🌎/🌞 prefix; the label format is
+    identical to the full-list buttons so the two views read the same.
+    """
+    pinned = pinned_torrents(results)
+    pinned_ids = {int(r["topic_id"]) for r in pinned}  # type: ignore[arg-type]
+    rest_count = sum(
+        1 for r in results
+        if isinstance(r.get("topic_id"), int) and r.get("topic_id") not in pinned_ids
+    )
 
     rows: list[list[InlineKeyboardButton]] = []
     for i, r in enumerate(pinned):
@@ -137,7 +153,11 @@ def torrent_list_keyboard(
 def torrent_all_keyboard(
     results: list[dict[str, object]], *, imdb_id: str = ""
 ) -> InlineKeyboardMarkup:
-    """Full list — same label format as pinned buttons, no icon prefix."""
+    """List — same label format as pinned buttons, no icon prefix.
+
+    Callers typically filter out the already-pinned entries before
+    passing ``results`` in, so «Ещё раздачи» really shows the remainder.
+    """
     rows: list[list[InlineKeyboardButton]] = []
     for r in results:
         topic_id = r.get("topic_id")

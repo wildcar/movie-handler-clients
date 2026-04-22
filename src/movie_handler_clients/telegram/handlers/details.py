@@ -21,6 +21,7 @@ from ...core.trailer_client import MovieTrailerMCPClient
 from ..download_tracker import DownloadTracker
 from ..keyboards import (
     details_keyboard,
+    pinned_torrents,
     search_results_keyboard,
     torrent_all_keyboard,
     torrent_list_keyboard,
@@ -363,9 +364,16 @@ async def on_torrent_show_all(
     if not results or cq.message is None:
         await cq.answer()
         return
+    # «Ещё раздачи» shows the remainder — skip the three already pinned in
+    # the original message so rows don't repeat.
+    pinned_ids = {int(r["topic_id"]) for r in pinned_torrents(results)}
+    rest = [r for r in results if r.get("topic_id") not in pinned_ids]
+    if not rest:
+        await cq.answer()
+        return
     await cq.message.answer(
         t("download.all_header"),
-        reply_markup=torrent_all_keyboard(results, imdb_id=imdb_id),
+        reply_markup=torrent_all_keyboard(rest, imdb_id=imdb_id),
     )
     await cq.answer()
 

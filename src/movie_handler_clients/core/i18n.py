@@ -55,7 +55,7 @@ RU: Final[dict[str, str]] = {
     "download.complete": "✅ Закачка завершена: <b>{name}</b>",
     "download.complete_noname": "✅ Закачка завершена.",
     "download.show_all": "Показать ещё {n} ▾",
-    "download.all_header": "Все раздачи:",
+    "download.all_header": "Ещё раздачи:",
     "status.header": "Твои закачки:",
     "status.no_downloads": "У тебя нет отслеживаемых закачек.",
     "status.not_configured": "⬇️ Сервер закачек не настроен.",
