@@ -8,25 +8,42 @@ from ..core.i18n import t
 
 
 def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> InlineKeyboardMarkup:
-    """One button per search hit — localized title + year, kind icon as prefix.
+    """One button per search hit in the SearchV2 format:
+    ``Title, YYYY, Country 🟢 7.9``.
 
-    Items arrive already sorted by the handler (by kind, then year desc).
+    Items arrive already sorted by the handler (movies first, then series,
+    each bucket descending by year).
     """
     rows: list[list[InlineKeyboardButton]] = []
     for item in items:
         imdb_id = item.get("imdb_id")
         if not imdb_id:
             continue
-        icon = "🧼" if item.get("kind") == "series" else "🎦"
-        title = str(item.get("title") or "—")
-        year = item.get("year")
-        label = f"{icon} {title}"
-        if year:
-            label += f" ({year})"
         rows.append(
-            [InlineKeyboardButton(text=label[:64], callback_data=f"d:{imdb_id}:{query_id}")]
+            [InlineKeyboardButton(
+                text=_search_button_label(item)[:64],
+                callback_data=f"d:{imdb_id}:{query_id}",
+            )]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _search_button_label(item: dict[str, object]) -> str:
+    title = str(item.get("title") or "—")
+    parts: list[str] = [title]
+    year = item.get("year")
+    if year:
+        parts.append(str(year))
+    country = item.get("country")
+    if isinstance(country, str) and country:
+        parts.append(country)
+    label = ", ".join(parts)
+    rating = item.get("rating")
+    if isinstance(rating, int | float) and float(rating) > 0:
+        val = float(rating)
+        badge = "🔴" if val < 5 else "🟡" if val < 7 else "🟢"
+        label += f" {badge} {val:.1f}"
+    return label
 
 
 _5GB = 5 * 1024**3

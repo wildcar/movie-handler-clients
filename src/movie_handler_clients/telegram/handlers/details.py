@@ -10,7 +10,6 @@ from aiogram.types import BufferedInputFile, CallbackQuery
 
 from ...core.formatters import (
     format_details,
-    format_search_item,
     format_trailer_caption,
     plural_ru,
 )
@@ -381,7 +380,7 @@ async def on_back(
     if entry is None or cq.message is None:
         await cq.answer()
         return
-    query, results = entry
+    _query, results = entry
     movies = [r for r in results if r.get("kind") != "series"]
     series = [r for r in results if r.get("kind") == "series"]
     summary_parts: list[str] = []
@@ -393,20 +392,9 @@ async def on_back(
         summary_parts.append(
             f"🧼 {len(series)} {plural_ru(len(series), ('сериал', 'сериала', 'сериалов'))}"
         )
-    lines: list[str] = [t("search.results_header", query=query)]
-    if summary_parts:
-        lines.append(" · ".join(summary_parts))
-    if movies:
-        lines.append("")
-        lines.append(t("search.section.movies"))
-        lines.extend(format_search_item(i) for i in movies)
-    if series:
-        lines.append("")
-        lines.append(t("search.section.series"))
-        lines.extend(format_search_item(i) for i in series)
+    text = " · ".join(summary_parts) if summary_parts else t("details.not_found")
     await cq.message.answer(
-        "\n".join(lines),
-        parse_mode="HTML",
+        text,
         reply_markup=search_results_keyboard(results, query_id),
         disable_web_page_preview=True,
     )
