@@ -49,16 +49,42 @@ def _search_button_label(item: dict[str, object]) -> str:
 
 _5GB = 5 * 1024**3
 _15GB = 15 * 1024**3
+_PINNED_ICONS = ("🌕", "🌎", "🌞")  # 1st / 2nd / 3rd pinned buckets
+
+
+def _format_torrent_label(r: dict[str, object]) -> str:
+    """Unified button label: ``5.5 GB · HDR · 1080p · WEB-DL · ⬆️ 92``.
+
+    Each segment is skipped when the underlying field is missing, so a
+    minimally-parsed row still renders a clean row without empty dots.
+    """
+    parts: list[str] = []
+    size_b = r.get("size_bytes")
+    if isinstance(size_b, int) and size_b > 0:
+        parts.append(_human_size_spaced(size_b))
+    if r.get("hdr"):
+        parts.append("HDR")
+    quality = r.get("quality")
+    if quality:
+        parts.append(str(quality))
+    source = r.get("source")
+    if source:
+        parts.append(str(source))
+    seeders = r.get("seeders")
+    if isinstance(seeders, int):
+        parts.append(f"⬆️ {seeders}")
+    return " · ".join(parts)
 
 
 def torrent_list_keyboard(
     results: list[dict[str, object]], *, imdb_id: str = ""
 ) -> InlineKeyboardMarkup:
-    """TorrentsV2: three pinned recommendations + 'show all' button.
+    """TorrentsV2: three pinned picks + «Показать ещё» button.
 
-    Pins the best (most seeders) torrent from each size/quality bucket:
-    ≤5 GB · 5–15 GB · HDR/4K. Remaining torrents are hidden behind a
-    «Показать ещё N ▾» button backed by the torrent cache.
+    Picks highest-seeder torrent in each bucket: (1) ≤5 GB, (2) 5–15 GB,
+    (3) HDR present. Each pinned button gets a 🌕/🌎/🌞 prefix; the label
+    format is identical to the full-list buttons so the two views read
+    the same — only the category ordering differs.
     """
     valid = [r for r in results if isinstance(r.get("topic_id"), int)]
 
@@ -74,41 +100,26 @@ def torrent_list_keyboard(
         matches = [r for r in valid if pred(r)]
         return max(matches, key=_seeds) if matches else None
 
-    def _is_hdr_4k(r: dict) -> bool:
-        return bool(r.get("hdr")) or "4k" in str(r.get("quality") or "").lower()
-
     small = _best(lambda r: 0 < _size(r) <= _5GB)
     mid = _best(lambda r: _5GB < _size(r) <= _15GB)
-    hdr = _best(_is_hdr_4k)
+    hdr = _best(lambda r: bool(r.get("hdr")))
 
     pinned_ids: set[int] = set()
-    pinned: list[tuple[str, dict]] = []
-    for label, pick in [("До 5 GB", small), ("5–15 GB", mid), ("HDR", hdr)]:
+    pinned: list[dict] = []
+    for pick in (small, mid, hdr):
         if pick is not None:
             tid = int(pick["topic_id"])  # type: ignore[arg-type]
             if tid not in pinned_ids:
                 pinned_ids.add(tid)
-                pinned.append((label, pick))
+                pinned.append(pick)
 
     rest_count = sum(1 for r in valid if r.get("topic_id") not in pinned_ids)
 
     rows: list[list[InlineKeyboardButton]] = []
-    for label, r in pinned:
+    for i, r in enumerate(pinned):
         topic_id = int(r["topic_id"])  # type: ignore[arg-type]
-        # Single-line button: Telegram clients truncate multi-line labels
-        # mid-text (iOS shows "До 5 GB.."), so we flatten everything into
-        # one compact row — bucket label, size, quality, seeders.
-        parts: list[str] = [label]
-        size_b = r.get("size_bytes")
-        if isinstance(size_b, int) and size_b > 0:
-            parts.append(_human_size_spaced(size_b))
-        quality = r.get("quality")
-        if quality:
-            parts.append(str(quality))
-        seeders = r.get("seeders")
-        if isinstance(seeders, int):
-            parts.append(f"👤{seeders}")
-        btn_label = " · ".join(parts)
+        icon = _PINNED_ICONS[i] if i < len(_PINNED_ICONS) else ""
+        btn_label = f"{icon} {_format_torrent_label(r)}".strip()
         cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
         rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=cb)])
 
@@ -126,49 +137,16 @@ def torrent_list_keyboard(
 def torrent_all_keyboard(
     results: list[dict[str, object]], *, imdb_id: str = ""
 ) -> InlineKeyboardMarkup:
-    """Full torrent list — all entries, classic one-button-per-row layout."""
+    """Full list — same label format as pinned buttons, no icon prefix."""
     rows: list[list[InlineKeyboardButton]] = []
     for r in results:
         topic_id = r.get("topic_id")
         if not isinstance(topic_id, int):
             continue
-        parts: list[str] = [f"#{topic_id}"]
-        size_b = r.get("size_bytes")
-        if isinstance(size_b, int) and size_b > 0:
-            parts.append(_size_bar(size_b))
-            parts.append(_human_size(size_b))
-        quality = r.get("quality")
-        if quality:
-            parts.append(str(quality))
-        if r.get("hdr"):
-            parts.append("HDR")
-        seeders = r.get("seeders")
-        if isinstance(seeders, int):
-            parts.append(f"🌱{seeders}")
-        label = " • ".join(parts)
+        label = _format_torrent_label(r)
         cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
         rows.append([InlineKeyboardButton(text=label[:64], callback_data=cb)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def _size_bar(n: int) -> str:
-    """One ``|`` per full 10 GB (1–6). Sub-10GB still gets one bar so the
-    column is never empty; 50 GB+ capped at six so buttons stay short."""
-    gb = n / 1024**3
-    return "|" * max(1, min(6, int(gb // 10) + 1))
-
-
-def _human_size(n: int) -> str:
-    """Rutracker-style human size. Keeps one decimal for GB/TB, none for MB."""
-    if n >= 1024**4:
-        return f"{n / 1024**4:.1f}TB"
-    if n >= 1024**3:
-        return f"{n / 1024**3:.1f}GB"
-    if n >= 1024**2:
-        return f"{n // 1024**2}MB"
-    if n >= 1024:
-        return f"{n // 1024}KB"
-    return f"{n}B"
 
 
 def _human_size_spaced(n: int) -> str:
