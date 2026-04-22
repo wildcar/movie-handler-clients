@@ -20,7 +20,7 @@ RU: Final[dict[str, str]] = {
     "details.error": "Не удалось получить подробности: {detail}",
     "details.not_found": "Похоже, этого фильма больше нет в базе.",
     "details.sources_failed": "⚠️ Недоступны источники: {sources}",
-    "details.button_trailer": "🎬 Трейлер",
+    "details.button_trailer": "Трейлер",
     "details.button_download": "⬇️ Скачать",
     "details.button_back": "← К списку",
     "stub.trailer": "🎬 Сервис трейлеров временно недоступен.",

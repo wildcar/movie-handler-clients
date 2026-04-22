@@ -29,6 +29,7 @@ def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> In
 
 
 def _search_button_label(item: dict[str, object]) -> str:
+    icon = "🧼" if item.get("kind") == "series" else "🎦"
     title = str(item.get("title") or "—")
     parts: list[str] = [title]
     year = item.get("year")
@@ -37,7 +38,7 @@ def _search_button_label(item: dict[str, object]) -> str:
     country = item.get("country")
     if isinstance(country, str) and country:
         parts.append(country)
-    label = ", ".join(parts)
+    label = f"{icon} " + ", ".join(parts)
     rating = item.get("rating")
     if isinstance(rating, int | float) and float(rating) > 0:
         val = float(rating)
@@ -183,7 +184,7 @@ def _human_size_spaced(n: int) -> str:
     return f"{n} B"
 
 
-_TRAILER_ICONS = {"trailer": "🎬", "teaser": "🎞", "clip": "📼", "featurette": "🎥"}
+_TRAILER_ICONS = {"trailer": "🎦", "teaser": "🎞", "clip": "📼", "featurette": "🎥"}
 _TRAILER_KIND_LABEL = {
     "trailer": "Трейлер",
     "teaser": "Тизер",
@@ -223,12 +224,22 @@ def trailer_alternatives_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def details_keyboard(imdb_id: str, query_id: str | None) -> InlineKeyboardMarkup:
-    # DetailsV2: [Back | Trailer] on top row, [⬇ Download] full-width below.
+def details_keyboard(
+    imdb_id: str, query_id: str | None, *, kind: str | None = None
+) -> InlineKeyboardMarkup:
+    """DetailsV2: [Back | Trailer] on top row, [⬇ Download] full-width below.
+
+    The trailer button's icon mirrors the title kind (🎦 for movies,
+    🧼 for series) so the card reads consistently.
+    """
+    trailer_icon = "🧼" if kind == "series" else "🎦"
     top_row: list[InlineKeyboardButton] = []
     if query_id:
         top_row.append(InlineKeyboardButton(text=t("details.button_back"), callback_data=f"b:{query_id}"))
-    top_row.append(InlineKeyboardButton(text=t("details.button_trailer"), callback_data=f"t:{imdb_id}"))
+    top_row.append(InlineKeyboardButton(
+        text=f"{trailer_icon} {t('details.button_trailer')}",
+        callback_data=f"t:{imdb_id}",
+    ))
     rows: list[list[InlineKeyboardButton]] = [
         top_row,
         [InlineKeyboardButton(text=t("details.button_download"), callback_data=f"dl:{imdb_id}")],

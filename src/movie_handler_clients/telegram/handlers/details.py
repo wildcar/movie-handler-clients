@@ -75,7 +75,7 @@ async def on_details(
 
     caption = format_details(payload)
     poster = details.get("poster_url")
-    kb = details_keyboard(imdb_id, query_id or None)
+    kb = details_keyboard(imdb_id, query_id or None, kind=kind_hint)
 
     if cq.message is None:
         await cq.answer()
