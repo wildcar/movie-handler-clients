@@ -35,17 +35,21 @@ def test_format_details_includes_all_ratings(sample_details_payload: dict) -> No
     assert "Дюна" in out
     assert "Dune" in out  # original title in parens
     assert "2021" in out
-    assert "155 мин" in out
+    assert "2 ч 35 мин" in out
     for label in ("TMDB", "IMDb", "Metacritic", "КиноПоиск"):
         assert label in out
-    # Numeric formatting: /10 scales get one decimal, /100 is rounded.
-    assert "7.8/10" in out  # TMDB 7.78
-    assert "8.0/10" in out  # IMDb 8.0
-    assert "74/100" in out  # Metacritic
-    assert "7.7/10" in out  # kinopoisk 7.676
+    # Compact ratings row: service label + formatted value.
+    assert "TMDB</a> 7.8" in out
+    assert "IMDb</a> 8.0" in out
+    assert "Metacritic 74" in out
+    assert "КиноПоиск</a> 7.7" in out
     # Colour badge: everything here is ≥7, so green.
     assert "🟢" in out
     assert "Пауль" in out
+    assert '<a href="https://www.themoviedb.org/movie/438631">TMDB</a>' in out
+    assert '<a href="https://www.imdb.com/title/tt1160419/">IMDb</a>' in out
+    assert '<a href="https://www.kinopoisk.ru/film/1318972/">КиноПоиск</a>' in out
+    assert ">Metacritic<" not in out
 
 
 def test_rating_badges_by_threshold() -> None:

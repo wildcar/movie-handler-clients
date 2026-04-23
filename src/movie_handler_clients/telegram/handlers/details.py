@@ -41,6 +41,7 @@ async def on_details(
     cq: CallbackQuery,
     mcp: MovieMetadataMCPClient,
     title_cache: TitleCache,
+    search_cache: SearchCache,
 ) -> None:
     _, imdb_id, query_id = (cq.data or "").split(":", 2)
     tg_user_id = cq.from_user.id if cq.from_user else None
@@ -66,7 +67,9 @@ async def on_details(
     # carries the IMDb id — we don't want to re-fetch details just to
     # build the rutracker query.
     year_val = details.get("year")
-    kind_hint: Kind = "series" if details.get("kind") == "series" else "movie"
+    kind_hint = _kind_from_search_cache(search_cache, query_id, imdb_id)
+    if kind_hint is None:
+        kind_hint = "series" if details.get("kind") == "series" else "movie"
     title_cache.put(
         imdb_id,
         str(details.get("title") or details.get("original_title") or ""),
@@ -413,6 +416,27 @@ def _err_msg(err: object) -> str:
     if isinstance(err, dict):
         return str(err.get("message") or err.get("code") or err)
     return str(err)
+
+
+def _kind_from_search_cache(
+    search_cache: SearchCache,
+    query_id: str,
+    imdb_id: str,
+) -> Kind | None:
+    entry = search_cache.get(query_id)
+    if entry is None:
+        return None
+    _query, results = entry
+    for item in results:
+        if item.get("imdb_id") != imdb_id:
+            continue
+        kind = item.get("kind")
+        if kind == "series":
+            return "series"
+        if kind == "movie":
+            return "movie"
+        return None
+    return None
 
 
 __all__ = ["router"]

@@ -42,6 +42,41 @@ def _format_rating_value(value: float, scale: float) -> str:
     return f"{value:.1f}"
 
 
+def _rating_source_url(source: str, movie: dict[str, Any]) -> str | None:
+    if source == "imdb":
+        imdb_id = movie.get("imdb_id")
+        if isinstance(imdb_id, str) and imdb_id.startswith("tt"):
+            return f"https://www.imdb.com/title/{imdb_id}/"
+        return None
+
+    kind = "series" if movie.get("kind") == "series" else "movie"
+
+    if source == "tmdb":
+        tmdb_id = movie.get("tmdb_id")
+        if isinstance(tmdb_id, int) and tmdb_id > 0:
+            path = "tv" if kind == "series" else "movie"
+            return f"https://www.themoviedb.org/{path}/{tmdb_id}"
+        return None
+
+    if source == "kinopoisk":
+        kinopoisk_id = movie.get("kinopoisk_id")
+        if isinstance(kinopoisk_id, int) and kinopoisk_id > 0:
+            path = "series" if kind == "series" else "film"
+            return f"https://www.kinopoisk.ru/{path}/{kinopoisk_id}/"
+        return None
+
+    return None
+
+
+def _rating_source_label(source: str, movie: dict[str, Any]) -> str:
+    label = _RATING_LABELS.get(source, source)
+    label_html = escape(str(label))
+    url = _rating_source_url(str(source), movie)
+    if not url:
+        return label_html
+    return f'<a href="{escape(url, quote=True)}">{label_html}</a>'
+
+
 def _rating_line(ratings: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for r in ratings:
@@ -161,7 +196,7 @@ def format_details(payload: dict[str, Any]) -> str:
         except (TypeError, ValueError):
             continue
         badge = _rating_badge(val_f, scale_f)
-        label = _RATING_LABELS.get(str(src), str(src))
+        label = _rating_source_label(str(src), movie)
         number = _format_rating_value(val_f, scale_f)
         rating_parts.append(f"{badge} {label} {number}")
     if rating_parts:

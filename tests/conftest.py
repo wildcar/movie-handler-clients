@@ -48,6 +48,8 @@ def sample_details_payload() -> dict[str, object]:
         "details": {
             "kind": "movie",
             "imdb_id": "tt1160419",
+            "tmdb_id": 438631,
+            "kinopoisk_id": 1318972,
             "title": "Дюна",
             "original_title": "Dune",
             "year": 2021,
