@@ -7,6 +7,29 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### Series search: drop year, parse season ranges client-side
+
+- Caught on Breaking Bad / Во все тяжкие: rutracker has dozens of
+  releases tagged «Сезон: 1 … Сезон: 5», but the previous query
+  «Breaking Bad 2008 S01» returned zero hits because Russian-language
+  rutracker doesn't use the `S0N` scene format and tags multi-season
+  releases with year ranges (`2008-2013`).
+- Series queries now omit the year entirely and skip the `S0N`
+  suffix. Instead we fetch a wider page (limit=50) by title alone
+  and filter client-side: `_parse_seasons` recognises «Сезон: 3»,
+  «Сезон 1-5», «Сезон 4, Эпизод», «1 сезон», `S03`, `S01-S05`,
+  `S03E07`. A release whose parsed season set contains the user's
+  pick stays in the list — bundles like «Сезон: 1-5» match every
+  individual season.
+- Movies are unchanged: year-qualified query with the no-year
+  fallback we already had.
+- Header label for season-filtered results now reads «Title — сезон N»
+  instead of the raw rutracker query.
+
+---
+
+## 2026-04-25
+
 ### Season picker between «⬇️ Скачать» and rutracker search
 
 - For series the «⬇️ Скачать» button now opens a season picker

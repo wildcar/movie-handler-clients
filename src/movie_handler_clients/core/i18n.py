@@ -82,6 +82,7 @@ RU: Final[dict[str, str]] = {
     "download.pick_season": "Какой сезон скачать?",
     "download.season_label": "Сезон {n}",
     "download.season_all": "Все сезоны",
+    "download.season_filter_label": "{title} — сезон {season}",
     "status.header": "Твои закачки:",
     "status.no_downloads": "У тебя нет отслеживаемых закачек.",
     "status.not_configured": "⬇️ Сервер закачек не настроен.",

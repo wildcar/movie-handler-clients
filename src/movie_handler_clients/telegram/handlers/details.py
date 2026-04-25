@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import re
 
 import structlog
 from aiogram import F, Router
@@ -280,23 +281,41 @@ async def _run_torrent_search(
     season: int | None,
 ) -> None:
     """Execute a rutracker search and present the result list. Shared by
-    the movie download path and both series-with-season paths."""
+    the movie download path and both series-with-season paths.
+
+    Movies use a year-qualified query with a no-year fallback (production
+    year on rutracker often diverges from the metadata's theatrical year).
+
+    Series ignore year entirely — Russian rutracker tags multi-season
+    releases as ranges («2008-2013») and per-season releases inherit the
+    year from the season's air date, which makes year-qualifying actively
+    harmful. Instead we query just the title, fetch a wider page, and
+    filter client-side by parsing the season number(s) out of each result
+    title (`Сезон: 3`, `Сезон 1-5`, `S03`…).
+    """
     assert cq.message is not None
     tg_user_id = cq.from_user.id if cq.from_user else None
     cached = title_cache.get(imdb_id)
     if cached is None:
         await cq.message.answer(t("download.reopen_card"))
         return
-    title, year, _kind, _seasons = cached
+    title, year, kind, _seasons = cached
 
-    season_suffix = f" S{season:02d}" if season else ""
-    query = f"{title} {year}{season_suffix}" if year else f"{title}{season_suffix}"
-    fallback_query = f"{title}{season_suffix}" if year else None
+    is_series = kind == "series"
+
+    if is_series:
+        query = title
+        fallback_query: str | None = None
+        limit = 50
+    else:
+        query = f"{title} {year}" if year else title
+        fallback_query = title if year else None
+        limit = 10
 
     await cq.answer(t("download.searching"))
 
     try:
-        payload = await torrent.search_torrents(query, limit=10, tg_user_id=tg_user_id)
+        payload = await torrent.search_torrents(query, limit=limit, tg_user_id=tg_user_id)
     except MCPClientError as exc:
         log.warning("torrent.search_failed", error=str(exc))
         await cq.message.answer(t("download.error", detail=str(exc)))
@@ -314,15 +333,13 @@ async def _run_torrent_search(
 
     results = payload.get("results") or []
 
-    # Year-mismatch fallback: TMDB/Kinopoisk report the theatrical/premiere
-    # year but rutracker often tags releases by the production year (±1).
-    # If a year-qualified search comes back empty, retry without the year
-    # before giving up. We keep the displayed query honest — show the user
-    # whatever produced the actual hits.
+    # Movies only: year-mismatch fallback. Theatrical year (TMDB/Kinopoisk)
+    # vs production year (rutracker) often differ by ±1, so retry without
+    # the year qualifier when nothing came back.
     if not results and fallback_query:
         try:
             payload = await torrent.search_torrents(
-                fallback_query, limit=10, tg_user_id=tg_user_id
+                fallback_query, limit=limit, tg_user_id=tg_user_id
             )
         except MCPClientError as exc:
             log.warning("torrent.search_failed", error=str(exc))
@@ -332,6 +349,17 @@ async def _run_torrent_search(
                 if results:
                     query = fallback_query
 
+    # Series with a chosen season: filter by what each release covers,
+    # parsed out of the raw title. Bundles (Сезон 1-5) match every season
+    # in their range. Releases without a recognizable season tag are
+    # dropped — for an explicit «Сезон N» pick they're noise.
+    display_label = query
+    if is_series and season is not None:
+        results = [r for r in results if season in _parse_seasons(str(r.get("title") or ""))]
+        display_label = t("download.season_filter_label", title=title, season=season)
+    elif is_series:
+        display_label = title
+
     if not results:
         await cq.message.answer(t("download.no_results"))
         return
@@ -340,7 +368,7 @@ async def _run_torrent_search(
     torrent_cache.put(imdb_id, results)
 
     from html import escape as _esc
-    text = t("download.list_header", query=_esc(query), n=len(results))
+    text = t("download.list_header", query=_esc(display_label), n=len(results))
     await cq.message.answer(
         text,
         parse_mode="HTML",
@@ -578,6 +606,42 @@ def _err_msg(err: object) -> str:
     if isinstance(err, dict):
         return str(err.get("message") or err.get("code") or err)
     return str(err)
+
+
+_SEASON_PATTERNS: list[re.Pattern[str]] = [
+    # Russian forms with optional colon and en-dash range:
+    #   «Сезон: 1», «Сезон 4, Эпизод», «Сезон: 1-5», «Сезон 1–5», «1 сезон»
+    re.compile(r"Сезон[:\s]*(\d{1,2})(?:\s*[-–—]\s*(\d{1,2}))?", re.IGNORECASE),
+    re.compile(r"\b(\d{1,2})(?:\s*[-–—]\s*(\d{1,2}))?\s*сезон", re.IGNORECASE),
+    # Scene-style: S03, S01-S05, S01E01.
+    re.compile(r"\bS(\d{1,2})(?:\s*[-–—]\s*S?(\d{1,2}))?", re.IGNORECASE),
+]
+
+
+def _parse_seasons(title: str) -> set[int]:
+    """Return every season number a release title declares — a single
+    season, or every season in a range. Empty set means "no season tag
+    we recognized"; the caller treats that as «doesn't match» when the
+    user asked for a specific season."""
+    out: set[int] = set()
+    for pattern in _SEASON_PATTERNS:
+        for m in pattern.finditer(title):
+            try:
+                start = int(m.group(1))
+            except (TypeError, ValueError):
+                continue
+            end_raw = m.group(2)
+            try:
+                end = int(end_raw) if end_raw else start
+            except ValueError:
+                end = start
+            if end < start or end - start > 30:
+                # Stray double-digit token after the season number is more
+                # likely an episode count or rip artifact than a true range.
+                end = start
+            for n in range(start, end + 1):
+                out.add(n)
+    return out
 
 
 def _kind_from_search_cache(
