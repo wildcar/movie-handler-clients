@@ -33,8 +33,13 @@ class MediaWatchClient:
     _http: httpx.AsyncClient | None = None
 
     async def __aenter__(self) -> MediaWatchClient:
+        url = self.base_url.strip().rstrip("/")
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(
+                f"MEDIA_WATCH_BASE_URL must start with http:// or https://; got {url!r}"
+            )
         self._http = httpx.AsyncClient(
-            base_url=self.base_url.rstrip("/"),
+            base_url=url,
             headers={"Authorization": f"Bearer {self.api_token}"},
             timeout=self.timeout_seconds,
         )

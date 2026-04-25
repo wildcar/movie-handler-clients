@@ -105,7 +105,8 @@ def _format_eta(size: int, done: int, rate: int) -> str:
         return "⏱ —"
     seconds = (size - done) // rate
     if seconds < 60:
-        return "⏱ <1 мин"
+        # parse_mode=HTML: a literal "<1" reads as a start tag — escape it.
+        return "⏱ &lt;1 мин"
     if seconds < 3600:
         return f"⏱ ~{seconds // 60} мин"
     h = seconds // 3600
