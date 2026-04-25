@@ -55,7 +55,7 @@ RU: Final[dict[str, str]] = {
     "download.complete": "✅ Закачка завершена: <b>{name}</b>",
     "download.complete_noname": "✅ Закачка завершена.",
     "download.complete_with_link": (
-        "✅ «<b>{name}</b>» готов к просмотру\n🎬 {url}"
+        "✅ «<b>{name}</b>» загружен\n🎬 {url}"
     ),
     "download.complete_episodes_header": (
         "📺 «<b>{name}</b>» — закачка готова, доступно серий: {n}"
