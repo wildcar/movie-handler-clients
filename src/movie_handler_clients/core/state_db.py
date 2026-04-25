@@ -392,6 +392,21 @@ class StateDb:
             rows = cur.fetchall()
         return [_row_to_download(r) for r in rows]
 
+    def list_user_registered(self, user_id: int) -> list[Download]:
+        """Downloads that successfully landed on media-watch — the «library»
+        view powering /list. Newest first."""
+        with self._tx() as cur:
+            cur.execute(
+                """
+                SELECT * FROM downloads
+                 WHERE user_id=? AND state='registered'
+                 ORDER BY COALESCE(completed_at, updated_at) DESC, id DESC
+                """,
+                (user_id,),
+            )
+            rows = cur.fetchall()
+        return [_row_to_download(r) for r in rows]
+
     def list_user_hashes(self, user_id: int) -> list[str]:
         with self._tx() as cur:
             cur.execute(

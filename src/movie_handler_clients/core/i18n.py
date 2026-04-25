@@ -37,9 +37,17 @@ RU: Final[dict[str, str]] = {
     "download.not_configured": "На сервере не заданы логин и пароль rutracker.",
     "download.reopen_card": "Открой карточку фильма заново и нажми «Скачать».",
     "download.sent_caption": "✅ Торрент-файл готов.",
-    "download.sent_to_server": "✅ Поставил на закачку на сервере: <b>{name}</b>",
-    "download.sent_to_server_series": "📺 Поставил на закачку (сериал): <b>{name}</b>",
-    "download.sent_to_server_noname": "✅ Поставил на закачку на сервере.",
+    "download.sent_to_server": (
+        "✅ Поставил на закачку на сервере: <b>{name}</b>\n"
+        "/status — посмотреть прогресс"
+    ),
+    "download.sent_to_server_series": (
+        "📺 Поставил на закачку (сериал): <b>{name}</b>\n"
+        "/status — посмотреть прогресс"
+    ),
+    "download.sent_to_server_noname": (
+        "✅ Поставил на закачку на сервере.\n/status — посмотреть прогресс"
+    ),
     "trailer.not_found": "🎬 Трейлеры не найдены.",
     "trailer.error": "Не удалось получить трейлеры: {detail}",
     "trailer.alternatives": "Другие варианты:",
@@ -74,6 +82,12 @@ RU: Final[dict[str, str]] = {
     "status.header": "Твои закачки:",
     "status.no_downloads": "У тебя нет отслеживаемых закачек.",
     "status.not_configured": "⬇️ Сервер закачек не настроен.",
+    "list.header": "Твоя медиатека:",
+    "list.empty": "Пока ничего нет. Найди фильм текстом и нажми «⬇️ Скачать».",
+    "list.movie_link": '<a href="{url}">{title}</a>',
+    "list.series_header": "📺 <b>{title}</b>",
+    "list.series_episode": '   <a href="{url}">S{season:02d}E{episode:02d}</a>',
+    "list.series_extra": '   <a href="{url}">Доп. файл</a>',
     "errors.generic": "Что-то пошло не так. Попробуй ещё раз чуть позже.",
 }
 

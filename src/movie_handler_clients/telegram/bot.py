@@ -8,6 +8,7 @@ from html import escape as _esc
 
 import structlog
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 
 from ..core.config import Settings, get_settings
 from ..core.i18n import t
@@ -25,6 +26,7 @@ from ..core.torrent_client import RutrackerTorrentMCPClient
 from ..core.traffic_log import TrafficLog
 from ..core.trailer_client import MovieTrailerMCPClient
 from .handlers import details as details_handler
+from .handlers import list as list_handler
 from .handlers import search as search_handler
 from .handlers import status as status_handler
 from .handlers import whoami as whoami_handler
@@ -309,9 +311,18 @@ async def _run(settings: Settings) -> None:
             admin_user_ids=admin_user_ids,
         )
         dp.include_router(status_handler.router)
+        dp.include_router(list_handler.router)
         dp.include_router(whoami_handler.router)
         dp.include_router(search_handler.router)
         dp.include_router(details_handler.router)
+
+        await bot.set_my_commands(
+            [
+                BotCommand(command="status", description="Прогресс закачек"),
+                BotCommand(command="list", description="Моя медиатека"),
+                BotCommand(command="whoami", description="Кто я для бота"),
+            ]
+        )
 
         log.info("bot.starting")
         if rtorrent is not None:

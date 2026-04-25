@@ -7,6 +7,25 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### `/list` command, status hint, bot menu
+
+- New `/list` handler — returns the user's "library" (downloads in
+  state `registered`). Each row is a Telegram hyperlink: visible
+  text is the metadata title (with `S01E01` for series episodes),
+  href is the watch URL on media-watch-web. `disable_web_page_preview`
+  is on so the message stays compact.
+- "Поставил на закачку на сервере" now ends with a `/status` hint
+  on its own line — clickable in Telegram out of the box.
+- `bot.set_my_commands` registers the three slash commands as the
+  bot's menu (the «/» picker next to the input box):
+  `/status`, `/list`, `/whoami`. `/start` stays implicit.
+- New repo method `state_db.list_user_registered(user_id)` —
+  newest-first by `completed_at`; powers `/list`.
+
+---
+
+## 2026-04-25
+
 ### Year-mismatch fallback for rutracker search
 
 - Caught on Чебурашка 2: TMDB and Kinopoisk both report year 2026
