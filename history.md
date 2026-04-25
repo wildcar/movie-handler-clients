@@ -7,6 +7,26 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### «Показать ещё» expands in place; release pick gets a confirmation step
+
+- `torall:` now edits the original message's reply_markup instead of
+  posting a fresh «Ещё раздачи» card. The «Показать ещё» button
+  disappears, every remaining release is appended as its own row
+  below the pinned picks, icons retained on the originals.
+- `tor:` no longer fetches the .torrent immediately. It sends a
+  preview message with the full release title (linked to the
+  rutracker topic) and a single «⬇️ Скачать» button. The actual
+  rutracker fetch + rtorrent push moved to a new `tdl:` callback
+  fired by that button, so the user gets a chance to confirm the
+  exact release they're committing to.
+- Confirmation button is removed (`edit_reply_markup(None)`) the
+  moment the second tap is processed, so a slow rutracker fetch
+  can't be re-triggered by a frustrated double-tap.
+
+---
+
+## 2026-04-25
+
 ### Strict single-season filter, drop «Все сезоны» button
 
 - The per-result keyboard rows only carry resolution / release type,

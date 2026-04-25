@@ -22,10 +22,9 @@ from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
 from ..keyboards import (
     details_keyboard,
-    pinned_torrents,
     search_results_keyboard,
     season_picker_keyboard,
-    torrent_all_keyboard,
+    torrent_confirm_keyboard,
     torrent_list_keyboard,
     trailer_alternatives_keyboard,
 )
@@ -389,6 +388,53 @@ async def _run_torrent_search(
 @router.callback_query(F.data.startswith("tor:"))
 async def on_torrent_pick(
     cq: CallbackQuery,
+    torrent_cache: TorrentCache,
+) -> None:
+    """First step: show the user the full release title with a link to
+    the rutracker topic, then offer a single «Скачать» button. We don't
+    fetch the .torrent yet — that's the second tap (`tdl:` callback)."""
+    parts = (cq.data or "").split(":", 2)
+    if len(parts) < 2 or cq.message is None:
+        await cq.answer()
+        return
+    try:
+        topic_id = int(parts[1])
+    except ValueError:
+        await cq.answer()
+        return
+    imdb_id = parts[2] if len(parts) > 2 else ""
+
+    full_title = ""
+    cached_results = torrent_cache.get(imdb_id) if imdb_id else None
+    if cached_results:
+        for r in cached_results:
+            if r.get("topic_id") == topic_id:
+                full_title = str(r.get("title") or "")
+                break
+
+    rutracker_url = f"https://rutracker.org/forum/viewtopic.php?t={topic_id}"
+    from html import escape as _esc
+    if full_title:
+        text = t(
+            "download.confirm_message",
+            title=_esc(full_title),
+            url=_esc(rutracker_url),
+        )
+    else:
+        text = t("download.confirm_message_no_title", url=_esc(rutracker_url))
+
+    await cq.answer()
+    await cq.message.answer(
+        text,
+        parse_mode="HTML",
+        reply_markup=torrent_confirm_keyboard(topic_id, imdb_id),
+        disable_web_page_preview=True,
+    )
+
+
+@router.callback_query(F.data.startswith("tdl:"))
+async def on_torrent_confirm(
+    cq: CallbackQuery,
     torrent: RutrackerTorrentMCPClient | None,
     rtorrent: RtorrentMCPClient | None,
     title_cache: TitleCache,
@@ -396,10 +442,8 @@ async def on_torrent_pick(
     state_db: StateDb,
     admin_user_ids: set[int],
 ) -> None:
-    # Callback shape: "tor:<topic_id>:<imdb_id>". The IMDb id is carried
-    # so we can pull the kind hint (movie vs series) from the title cache
-    # without another round-trip — it decides which directory on the
-    # media server the download lands in.
+    """Second step: actually fetch the .torrent and push it to rtorrent.
+    Callback shape is `tdl:<topic_id>:<imdb_id>`."""
     parts = (cq.data or "").split(":", 2)
     if len(parts) < 2:
         await cq.answer()
@@ -419,6 +463,13 @@ async def on_torrent_pick(
     # Ack immediately; dl.php can take a while and we don't want the
     # callback_query TTL to expire before we reply.
     await cq.answer(t("download.fetching"))
+
+    # Hide the «Скачать» button so the user can't double-tap while the
+    # rutracker round-trip is in flight.
+    try:
+        await cq.message.edit_reply_markup(reply_markup=None)
+    except Exception:  # noqa: BLE001 — best-effort UI cleanup
+        pass
 
     try:
         payload = await torrent.get_torrent_file(topic_id, tg_user_id=tg_user_id)
@@ -561,23 +612,31 @@ async def on_torrent_show_all(
     cq: CallbackQuery,
     torrent_cache: TorrentCache,
 ) -> None:
+    """Replace the «Показать ещё» button with rows for every remaining
+    release. The list grows in place — pinned picks stay at the top
+    with their icons, the rest are appended below."""
     imdb_id = (cq.data or "")[7:]
     results = torrent_cache.get(imdb_id) if imdb_id else None
     if not results or cq.message is None:
         await cq.answer()
         return
-    # «Ещё раздачи» shows the remainder — skip the three already pinned in
-    # the original message so rows don't repeat.
-    pinned_ids = {int(r["topic_id"]) for r in pinned_torrents(results)}
-    rest = [r for r in results if r.get("topic_id") not in pinned_ids]
-    if not rest:
-        await cq.answer()
-        return
-    await cq.message.answer(
-        t("download.all_header"),
-        reply_markup=torrent_all_keyboard(rest, imdb_id=imdb_id),
-    )
     await cq.answer()
+    try:
+        await cq.message.edit_reply_markup(
+            reply_markup=torrent_list_keyboard(
+                results, imdb_id=imdb_id, expand_all=True
+            )
+        )
+    except Exception as exc:  # noqa: BLE001
+        # If editing fails (e.g. message too old), fall back to a fresh
+        # message so the user still gets the expanded list.
+        log.info("torrent.expand_edit_failed", error=str(exc))
+        await cq.message.answer(
+            t("download.all_header"),
+            reply_markup=torrent_list_keyboard(
+                results, imdb_id=imdb_id, expand_all=True
+            ),
+        )
 
 
 @router.callback_query(F.data.startswith("b:"))

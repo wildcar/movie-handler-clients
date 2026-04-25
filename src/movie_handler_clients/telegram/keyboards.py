@@ -117,19 +117,18 @@ def pinned_torrents(results: list[dict[str, object]]) -> list[dict[str, object]]
 
 
 def torrent_list_keyboard(
-    results: list[dict[str, object]], *, imdb_id: str = ""
+    results: list[dict[str, object]], *, imdb_id: str = "", expand_all: bool = False
 ) -> InlineKeyboardMarkup:
-    """TorrentsV2: three pinned picks + «Показать ещё» button.
-
-    Each pinned button gets a 🌕/🌎/🌞 prefix; the label format is
-    identical to the full-list buttons so the two views read the same.
-    """
+    """Three pinned picks + «Показать ещё» button by default. When
+    ``expand_all`` is set, pin row(s) come first (icons retained) and
+    every remaining release is appended as its own row — used to
+    re-render the same message after the user taps «Показать ещё»."""
     pinned = pinned_torrents(results)
     pinned_ids = {int(r["topic_id"]) for r in pinned}  # type: ignore[arg-type]
-    rest_count = sum(
-        1 for r in results
+    rest = [
+        r for r in results
         if isinstance(r.get("topic_id"), int) and r.get("topic_id") not in pinned_ids
-    )
+    ]
 
     rows: list[list[InlineKeyboardButton]] = []
     for i, r in enumerate(pinned):
@@ -139,15 +138,31 @@ def torrent_list_keyboard(
         cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
         rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=cb)])
 
-    if rest_count > 0:
+    if expand_all:
+        for r in rest:
+            topic_id = int(r["topic_id"])  # type: ignore[arg-type]
+            btn_label = _format_torrent_label(r)
+            cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
+            rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=cb)])
+    elif rest:
         from ..core.i18n import t as _t
         cb_all = f"torall:{imdb_id}" if imdb_id else "torall:"
         rows.append([InlineKeyboardButton(
-            text=_t("download.show_all", n=rest_count),
+            text=_t("download.show_all", n=len(rest)),
             callback_data=cb_all,
         )])
 
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def torrent_confirm_keyboard(topic_id: int, imdb_id: str) -> InlineKeyboardMarkup:
+    """Single «Скачать» button shown under the release confirmation
+    message. Callback `tdl:` triggers the actual rutracker fetch +
+    rtorrent push (the bare `tor:` callback only opens the preview)."""
+    cb = f"tdl:{topic_id}:{imdb_id}" if imdb_id else f"tdl:{topic_id}"
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=t("download.confirm_button"), callback_data=cb),
+    ]])
 
 
 def torrent_all_keyboard(

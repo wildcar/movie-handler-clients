@@ -79,6 +79,13 @@ RU: Final[dict[str, str]] = {
     "whoami.admin_no": "🛡 Админ: нет",
     "download.show_all": "Показать ещё {n} ▾",
     "download.all_header": "Ещё раздачи:",
+    "download.confirm_button": "⬇️ Скачать",
+    "download.confirm_message": (
+        "<b>{title}</b>\n\n🔗 <a href=\"{url}\">Открыть на rutracker</a>"
+    ),
+    "download.confirm_message_no_title": (
+        "🔗 <a href=\"{url}\">Открыть раздачу на rutracker</a>"
+    ),
     "download.pick_season": "Какой сезон скачать?",
     "download.season_label": "Сезон {n}",
     "download.season_all": "Все сезоны",
