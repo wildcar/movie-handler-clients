@@ -231,6 +231,26 @@ async def on_download(
         return
 
     results = payload.get("results") or []
+
+    # Year-mismatch fallback: TMDB/Kinopoisk report the theatrical/premiere
+    # year but rutracker often tags releases by the production year (±1).
+    # If a year-qualified search comes back empty, retry without the year
+    # before giving up. We keep the displayed query honest — show the user
+    # whatever produced the actual hits.
+    if not results and year:
+        fallback_query = title
+        try:
+            payload = await torrent.search_torrents(
+                fallback_query, limit=10, tg_user_id=tg_user_id
+            )
+        except MCPClientError as exc:
+            log.warning("torrent.search_failed", error=str(exc))
+        else:
+            if not payload.get("error"):
+                results = payload.get("results") or []
+                if results:
+                    query = fallback_query
+
     if not results:
         await cq.message.answer(t("download.no_results"))
         return

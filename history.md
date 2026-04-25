@@ -7,6 +7,22 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### Year-mismatch fallback for rutracker search
+
+- Caught on Чебурашка 2: TMDB and Kinopoisk both report year 2026
+  (premiere), but every rutracker release is tagged 2025
+  (production). The year-qualified query «Чебурашка 2 2026» returned
+  zero hits even though the title was clearly available.
+- `on_download` now retries with the bare title when the
+  year-qualified search comes back empty. The narrower query is
+  still tried first to keep results clean for common-name films.
+- Captcha / not_configured errors during the fallback are silent —
+  the original error path already covered them on the first attempt.
+
+---
+
+## 2026-04-25
+
 ### Use the metadata title (not the rtorrent filename) for registered downloads
 
 - `_try_send_to_rtorrent` was persisting `dl.name` (rtorrent's release
