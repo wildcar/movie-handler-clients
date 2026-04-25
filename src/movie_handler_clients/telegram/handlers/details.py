@@ -23,6 +23,7 @@ from ..keyboards import (
     details_keyboard,
     pinned_torrents,
     search_results_keyboard,
+    season_picker_keyboard,
     torrent_all_keyboard,
     torrent_list_keyboard,
     trailer_alternatives_keyboard,
@@ -69,6 +70,7 @@ async def on_details(
     # carries the IMDb id — we don't want to re-fetch details just to
     # build the rutracker query.
     year_val = details.get("year")
+    seasons_val = details.get("number_of_seasons")
     kind_hint = _kind_from_search_cache(search_cache, query_id, imdb_id)
     if kind_hint is None:
         kind_hint = "series" if details.get("kind") == "series" else "movie"
@@ -77,6 +79,7 @@ async def on_details(
         str(details.get("title") or details.get("original_title") or ""),
         int(year_val) if isinstance(year_val, int) else None,
         kind_hint,
+        int(seasons_val) if isinstance(seasons_val, int) and seasons_val > 0 else None,
     )
     # Stash extra fields so the download tap can persist them into the
     # Download row without re-fetching get_movie_details.
@@ -193,7 +196,6 @@ async def on_download(
     torrent_cache: TorrentCache,
 ) -> None:
     imdb_id = (cq.data or "")[3:]
-    tg_user_id = cq.from_user.id if cq.from_user else None
 
     if torrent is None or cq.message is None:
         await cq.answer(t("stub.download"), show_alert=True)
@@ -205,12 +207,92 @@ async def on_download(
         # download tap — tell the user to reopen the card.
         await cq.answer(t("download.reopen_card"), show_alert=True)
         return
-    title, year, _kind = cached
-    query = f"{title} {year}" if year else title
+    _title, _year, kind, seasons = cached
 
-    # Stop the button spinner immediately — the rutracker search can take
-    # longer than Telegram's ~15s callback_query TTL, after which cq.answer()
-    # raises "query is too old" and the user sees nothing at all.
+    # Series get an intermediate season picker before the rutracker search
+    # so the user can narrow the query to a specific season. Movies (and
+    # series with no known season count) skip straight to the search.
+    if kind == "series" and seasons and seasons > 0:
+        await cq.answer()
+        await cq.message.answer(
+            t("download.pick_season"),
+            reply_markup=season_picker_keyboard(imdb_id, seasons),
+        )
+        return
+
+    await _run_torrent_search(cq, torrent, torrent_cache, title_cache, imdb_id, season=None)
+
+
+@router.callback_query(F.data.startswith("dls:"))
+async def on_download_season(
+    cq: CallbackQuery,
+    torrent: RutrackerTorrentMCPClient | None,
+    title_cache: TitleCache,
+    torrent_cache: TorrentCache,
+) -> None:
+    # Callback shape: "dls:<imdb_id>:<season>".
+    parts = (cq.data or "").split(":", 2)
+    if len(parts) < 3:
+        await cq.answer()
+        return
+    imdb_id = parts[1]
+    try:
+        season = int(parts[2])
+    except ValueError:
+        await cq.answer()
+        return
+    if torrent is None or cq.message is None:
+        await cq.answer(t("stub.download"), show_alert=True)
+        return
+    if title_cache.get(imdb_id) is None:
+        await cq.answer(t("download.reopen_card"), show_alert=True)
+        return
+
+    await _run_torrent_search(
+        cq, torrent, torrent_cache, title_cache, imdb_id, season=season
+    )
+
+
+@router.callback_query(F.data.startswith("dla:"))
+async def on_download_all_seasons(
+    cq: CallbackQuery,
+    torrent: RutrackerTorrentMCPClient | None,
+    title_cache: TitleCache,
+    torrent_cache: TorrentCache,
+) -> None:
+    imdb_id = (cq.data or "")[4:]
+    if torrent is None or cq.message is None:
+        await cq.answer(t("stub.download"), show_alert=True)
+        return
+    if title_cache.get(imdb_id) is None:
+        await cq.answer(t("download.reopen_card"), show_alert=True)
+        return
+    await _run_torrent_search(cq, torrent, torrent_cache, title_cache, imdb_id, season=None)
+
+
+async def _run_torrent_search(
+    cq: CallbackQuery,
+    torrent: RutrackerTorrentMCPClient,
+    torrent_cache: TorrentCache,
+    title_cache: TitleCache,
+    imdb_id: str,
+    *,
+    season: int | None,
+) -> None:
+    """Execute a rutracker search and present the result list. Shared by
+    the movie download path and both series-with-season paths."""
+    assert cq.message is not None
+    tg_user_id = cq.from_user.id if cq.from_user else None
+    cached = title_cache.get(imdb_id)
+    if cached is None:
+        await cq.message.answer(t("download.reopen_card"))
+        return
+    title, year, _kind, _seasons = cached
+
+    season_suffix = f" S{season:02d}" if season else ""
+    query = f"{title} {year}{season_suffix}" if year else f"{title}{season_suffix}"
+    fallback_query = f"{title}{season_suffix}" if year else None
+
     await cq.answer(t("download.searching"))
 
     try:
@@ -237,8 +319,7 @@ async def on_download(
     # If a year-qualified search comes back empty, retry without the year
     # before giving up. We keep the displayed query honest — show the user
     # whatever produced the actual hits.
-    if not results and year:
-        fallback_query = title
+    if not results and fallback_query:
         try:
             payload = await torrent.search_torrents(
                 fallback_query, limit=10, tg_user_id=tg_user_id

@@ -7,6 +7,27 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### Season picker between «⬇️ Скачать» and rutracker search
+
+- For series the «⬇️ Скачать» button now opens a season picker
+  («Сезон 1 … Сезон N» + «Все сезоны») instead of running the
+  rutracker search immediately. Selected season is appended to the
+  query as `S{nn:02d}` (`Wednesday 2025 S01`) so rutracker filters
+  by season-tagged scene releases.
+- Season count comes from the metadata MCP — a new
+  `number_of_seasons` field on `MovieDetails`. Bot's title-cache
+  grew a fourth tuple slot to carry it.
+- Movies skip the picker entirely — same behaviour as before.
+- «Все сезоны» runs the original whole-show search; useful when the
+  scene tags don't match what rutracker uses.
+- Refactor: pulled the actual «search → list» flow into
+  `_run_torrent_search` helper, shared by the movie download path,
+  the per-season download, and the «Все сезоны» fallback.
+
+---
+
+## 2026-04-25
+
 ### `/list` command, status hint, bot menu
 
 - New `/list` handler — returns the user's "library" (downloads in

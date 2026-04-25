@@ -222,6 +222,34 @@ def trailer_alternatives_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def season_picker_keyboard(imdb_id: str, seasons: int) -> InlineKeyboardMarkup:
+    """Show one button per season plus an «All seasons» fallback that
+    runs the rutracker search without a season qualifier."""
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for season in range(1, seasons + 1):
+        row.append(
+            InlineKeyboardButton(
+                text=t("download.season_label", n=season),
+                callback_data=f"dls:{imdb_id}:{season}",
+            )
+        )
+        # Lay seasons out in rows of 4 so 12-season shows don't blow up the
+        # button column.
+        if len(row) == 4:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([
+        InlineKeyboardButton(
+            text=t("download.season_all"),
+            callback_data=f"dla:{imdb_id}",
+        )
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def details_keyboard(
     imdb_id: str, query_id: str | None, *, kind: str | None = None
 ) -> InlineKeyboardMarkup:
