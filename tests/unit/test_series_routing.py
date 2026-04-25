@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from movie_handler_clients.telegram.handlers import details as details_mod
+from movie_handler_clients.telegram.movie_meta_cache import MovieMetaCache
 from movie_handler_clients.telegram.search_cache import SearchCache
 from movie_handler_clients.telegram.title_cache import TitleCache
 
@@ -49,6 +50,7 @@ async def test_on_details_prefers_search_result_kind_for_title_cache() -> None:
         mcp=mcp,
         title_cache=title_cache,
         search_cache=search_cache,
+        movie_meta_cache=MovieMetaCache(),
     )
 
     cached = title_cache.get("tt11280740")

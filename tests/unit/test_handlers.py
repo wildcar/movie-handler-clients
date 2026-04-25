@@ -11,9 +11,28 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from movie_handler_clients.core.state_db import StateDb
 from movie_handler_clients.telegram.handlers import details as details_mod
 from movie_handler_clients.telegram.handlers import search as search_mod
+from movie_handler_clients.telegram.movie_meta_cache import MovieMetaCache
 from movie_handler_clients.telegram.search_cache import SearchCache
+
+
+def _cq_user(user_id: int = 42) -> SimpleNamespace:
+    return SimpleNamespace(
+        id=user_id,
+        first_name="Test",
+        last_name="User",
+        username="test_user",
+    )
+
+
+def _cq_message(chat_id: int = 100) -> SimpleNamespace:
+    return SimpleNamespace(
+        answer_document=AsyncMock(),
+        answer=AsyncMock(),
+        chat=SimpleNamespace(id=chat_id),
+    )
 
 
 def _msg(text: str, user_id: int = 42) -> SimpleNamespace:
@@ -367,13 +386,13 @@ async def test_base_mcp_client_reconnects_on_session_terminated() -> None:
     assert reopen_called == [1]
 
 
-async def test_torrent_pick_sends_document() -> None:
+async def test_torrent_pick_sends_document(tmp_path) -> None:  # type: ignore[no-untyped-def]
     from movie_handler_clients.telegram.title_cache import TitleCache
 
     cq = SimpleNamespace(
         data="tor:42",
-        from_user=SimpleNamespace(id=42),
-        message=SimpleNamespace(answer_document=AsyncMock(), answer=AsyncMock()),
+        from_user=_cq_user(),
+        message=_cq_message(),
         answer=AsyncMock(),
     )
     torrent = AsyncMock()
@@ -389,30 +408,34 @@ async def test_torrent_pick_sends_document() -> None:
         }
     )
 
-    from movie_handler_clients.telegram.download_tracker import DownloadTracker
-
+    state_db = StateDb(path=tmp_path / "state.sqlite")
     # No rtorrent client wired → bot falls through to answer_document.
     await details_mod.on_torrent_pick(
         cq,  # type: ignore[arg-type]
         torrent=torrent,
         rtorrent=None,
         title_cache=TitleCache(),
-        tracker=DownloadTracker(),
+        movie_meta_cache=MovieMetaCache(),
+        state_db=state_db,
+        admin_user_ids=set(),
     )
 
     torrent.get_torrent_file.assert_awaited_once_with(42, tg_user_id=42)
     cq.message.answer_document.assert_awaited_once()
+    state_db.close()
 
 
-async def test_torrent_pick_uploads_to_rtorrent_when_configured() -> None:
+async def test_torrent_pick_uploads_to_rtorrent_when_configured(tmp_path) -> None:  # type: ignore[no-untyped-def]
     from movie_handler_clients.telegram.title_cache import TitleCache
 
     cache = TitleCache()
     cache.put("tt1160419", "Дюна", 2021, "movie")
+    meta_cache = MovieMetaCache()
+    meta_cache.put("tt1160419", description="Paul Atreides", poster_url="https://x/p.jpg")
     cq = SimpleNamespace(
         data="tor:42:tt1160419",
-        from_user=SimpleNamespace(id=42),
-        message=SimpleNamespace(answer_document=AsyncMock(), answer=AsyncMock()),
+        from_user=_cq_user(),
+        message=_cq_message(),
         answer=AsyncMock(),
     )
     torrent = AsyncMock()
@@ -432,15 +455,15 @@ async def test_torrent_pick_uploads_to_rtorrent_when_configured() -> None:
         return_value={"download": {"hash": "A" * 40, "name": "Dune"}, "error": None}
     )
 
-    from movie_handler_clients.telegram.download_tracker import DownloadTracker
-
-    tracker = DownloadTracker()
+    state_db = StateDb(path=tmp_path / "state.sqlite")
     await details_mod.on_torrent_pick(
         cq,  # type: ignore[arg-type]
         torrent=torrent,
         rtorrent=rtorrent,
         title_cache=cache,
-        tracker=tracker,
+        movie_meta_cache=meta_cache,
+        state_db=state_db,
+        admin_user_ids={42},
     )
 
     # rtorrent call got the kind hint from the cache and the base64 blob.
@@ -451,17 +474,26 @@ async def test_torrent_pick_uploads_to_rtorrent_when_configured() -> None:
     # No document sent — the file stayed on the server.
     cq.message.answer_document.assert_not_awaited()
     cq.message.answer.assert_awaited_once()
+    # Persisted: download row + admin flag for user 42.
+    download = state_db.get_download_by_hash("A" * 40)
+    assert download is not None
+    assert download.imdb_id == "tt1160419"
+    assert download.kind == "movie"
+    assert download.description == "Paul Atreides"
+    user = state_db.get_user(download.user_id)
+    assert user is not None and user.is_admin is True
+    state_db.close()
 
 
-async def test_torrent_pick_falls_back_to_document_on_rtorrent_error() -> None:
+async def test_torrent_pick_falls_back_to_document_on_rtorrent_error(tmp_path) -> None:  # type: ignore[no-untyped-def]
     from movie_handler_clients.telegram.title_cache import TitleCache
 
     cache = TitleCache()
     cache.put("tt1160419", "Дюна", 2021, "movie")
     cq = SimpleNamespace(
         data="tor:42:tt1160419",
-        from_user=SimpleNamespace(id=42),
-        message=SimpleNamespace(answer_document=AsyncMock(), answer=AsyncMock()),
+        from_user=_cq_user(),
+        message=_cq_message(),
         answer=AsyncMock(),
     )
     torrent = AsyncMock()
@@ -479,14 +511,16 @@ async def test_torrent_pick_falls_back_to_document_on_rtorrent_error() -> None:
         }
     )
 
-    from movie_handler_clients.telegram.download_tracker import DownloadTracker
-
+    state_db = StateDb(path=tmp_path / "state.sqlite")
     await details_mod.on_torrent_pick(
         cq,  # type: ignore[arg-type]
         torrent=torrent,
         rtorrent=rtorrent,
         title_cache=cache,
-        tracker=DownloadTracker(),
+        movie_meta_cache=MovieMetaCache(),
+        state_db=state_db,
+        admin_user_ids=set(),
     )
 
     cq.message.answer_document.assert_awaited_once()
+    state_db.close()

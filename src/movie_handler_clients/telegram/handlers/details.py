@@ -16,9 +16,9 @@ from ...core.formatters import (
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
 from ...core.rtorrent_client import RtorrentMCPClient
+from ...core.state_db import StateDb
 from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
-from ..download_tracker import DownloadTracker
 from ..keyboards import (
     details_keyboard,
     pinned_torrents,
@@ -27,6 +27,7 @@ from ..keyboards import (
     torrent_list_keyboard,
     trailer_alternatives_keyboard,
 )
+from ..movie_meta_cache import MovieMetaCache
 from ..search_cache import SearchCache
 from ..title_cache import Kind, TitleCache
 from ..torrent_cache import TorrentCache
@@ -42,6 +43,7 @@ async def on_details(
     mcp: MovieMetadataMCPClient,
     title_cache: TitleCache,
     search_cache: SearchCache,
+    movie_meta_cache: MovieMetaCache,
 ) -> None:
     _, imdb_id, query_id = (cq.data or "").split(":", 2)
     tg_user_id = cq.from_user.id if cq.from_user else None
@@ -75,6 +77,13 @@ async def on_details(
         str(details.get("title") or details.get("original_title") or ""),
         int(year_val) if isinstance(year_val, int) else None,
         kind_hint,
+    )
+    # Stash extra fields so the download tap can persist them into the
+    # Download row without re-fetching get_movie_details.
+    movie_meta_cache.put(
+        imdb_id,
+        description=str(details.get("plot") or details.get("overview") or ""),
+        poster_url=str(details.get("poster_url") or ""),
     )
 
     caption = format_details(payload)
@@ -245,7 +254,9 @@ async def on_torrent_pick(
     torrent: RutrackerTorrentMCPClient | None,
     rtorrent: RtorrentMCPClient | None,
     title_cache: TitleCache,
-    tracker: DownloadTracker,
+    movie_meta_cache: MovieMetaCache,
+    state_db: StateDb,
+    admin_user_ids: set[int],
 ) -> None:
     # Callback shape: "tor:<topic_id>:<imdb_id>". The IMDb id is carried
     # so we can pull the kind hint (movie vs series) from the title cache
@@ -306,8 +317,17 @@ async def on_torrent_pick(
     if rtorrent is not None:
         source_url = f"https://rutracker.org/forum/viewtopic.php?t={topic_id}"
         ok = await _try_send_to_rtorrent(
-            cq, rtorrent, tracker=tracker, b64=b64, kind=kind,
-            comment=source_url, tg_user_id=tg_user_id,
+            cq,
+            rtorrent,
+            state_db=state_db,
+            admin_user_ids=admin_user_ids,
+            b64=b64,
+            kind=kind,
+            imdb_id=imdb_id or None,
+            title_cache=title_cache,
+            movie_meta_cache=movie_meta_cache,
+            comment=source_url,
+            tg_user_id=tg_user_id,
         )
         if ok:
             return  # done — no fallback needed
@@ -323,9 +343,13 @@ async def _try_send_to_rtorrent(
     cq: CallbackQuery,
     rtorrent: RtorrentMCPClient,
     *,
-    tracker: DownloadTracker,
+    state_db: StateDb,
+    admin_user_ids: set[int],
     b64: str,
     kind: Kind | None,
+    imdb_id: str | None,
+    title_cache: TitleCache,
+    movie_meta_cache: MovieMetaCache,
     comment: str | None = None,
     tg_user_id: int | None,
 ) -> bool:
@@ -346,8 +370,37 @@ async def _try_send_to_rtorrent(
     name = str(dl.get("name") or "").strip()
     hash_ = str(dl.get("hash") or "").strip()
 
-    if hash_ and tg_user_id is not None:
-        tracker.track(hash_, tg_user_id, name)
+    if hash_ and tg_user_id is not None and cq.from_user is not None:
+        # Resolve / create the user, then persist the Download row so the
+        # poller can finalize it on completion even after a bot restart.
+        display_name = " ".join(
+            p for p in (cq.from_user.first_name, cq.from_user.last_name) if p
+        ).strip() or (cq.from_user.username or "")
+        chat_id = cq.message.chat.id if cq.message.chat else tg_user_id
+        user = state_db.upsert_telegram_user(
+            tg_user_id=tg_user_id,
+            display_name=display_name,
+            chat_id=chat_id,
+            is_admin=tg_user_id in admin_user_ids,
+            meta={
+                "username": cq.from_user.username,
+                "first_name": cq.from_user.first_name,
+                "last_name": cq.from_user.last_name,
+            },
+        )
+        cached_title = title_cache.get(imdb_id) if imdb_id else None
+        title_for_db = name or (cached_title[0] if cached_title else "") or "?"
+        meta = movie_meta_cache.get(imdb_id) if imdb_id else None
+        state_db.add_download(
+            user_id=user.id,
+            info_hash=hash_,
+            kind=str(kind or "movie"),
+            title=title_for_db,
+            imdb_id=imdb_id or None,
+            description=meta.description if meta else "",
+            poster_url=meta.poster_url if meta else "",
+            source="rutracker",
+        )
 
     dest_key = "download.sent_to_server_series" if kind == "series" else "download.sent_to_server"
     from html import escape as _esc

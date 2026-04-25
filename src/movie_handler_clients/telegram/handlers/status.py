@@ -13,7 +13,7 @@ from aiogram.types import Message
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError
 from ...core.rtorrent_client import RtorrentMCPClient
-from ..download_tracker import DownloadTracker
+from ...core.state_db import StateDb
 
 router = Router(name="status")
 log = structlog.get_logger(__name__)
@@ -23,7 +23,7 @@ log = structlog.get_logger(__name__)
 async def on_status(
     message: Message,
     rtorrent: RtorrentMCPClient | None,
-    tracker: DownloadTracker,
+    state_db: StateDb,
 ) -> None:
     if rtorrent is None:
         await message.answer(t("status.not_configured"))
@@ -33,7 +33,11 @@ async def on_status(
     if tg_user_id is None:
         return
 
-    hashes = tracker.user_hashes(tg_user_id)
+    identity = state_db.get_telegram_identity(tg_user_id)
+    if identity is None:
+        await message.answer(t("status.no_downloads"))
+        return
+    hashes = state_db.list_user_hashes(identity.user_id)
     if not hashes:
         await message.answer(t("status.no_downloads"))
         return
@@ -48,7 +52,7 @@ async def on_status(
         if err := payload.get("error"):
             code = (err or {}).get("code") if isinstance(err, dict) else None
             if code == "not_found":
-                tracker.untrack(h)
+                state_db.mark_cancelled(h, "rtorrent reports not_found")
             continue
         dl = payload.get("download")
         if dl:

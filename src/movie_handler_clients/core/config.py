@@ -61,6 +61,46 @@ class Settings(BaseSettings):
     )
     log_level: str = Field("INFO", description="Root log level for structlog.")
 
+    state_db_path: Path = Field(
+        Path(".cache/state.sqlite"),
+        description=(
+            "SQLite file storing users, downloads and watch links across "
+            "bot restarts."
+        ),
+    )
+    media_watch_base_url: str | None = Field(
+        None,
+        description=(
+            "Public base URL of media-watch-web (e.g. https://v.wildcar.ru). "
+            "When unset, the bot still tracks downloads but skips the "
+            "media-watch register call on completion."
+        ),
+    )
+    media_watch_api_token: str | None = Field(
+        None,
+        description="Bearer token for the media-watch-web /api/register endpoint.",
+    )
+    admin_telegram_ids: str = Field(
+        "",
+        description=(
+            "Comma-separated Telegram user ids that get is_admin=1 on "
+            "first interaction (or on the next interaction if already "
+            "in the DB)."
+        ),
+    )
+
+    def admin_user_ids(self) -> set[int]:
+        out: set[int] = set()
+        for raw in self.admin_telegram_ids.split(","):
+            raw = raw.strip()
+            if not raw:
+                continue
+            try:
+                out.add(int(raw))
+            except ValueError:
+                continue
+        return out
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

@@ -54,6 +54,21 @@ RU: Final[dict[str, str]] = {
     "trailer.kind.other": "Видео",
     "download.complete": "✅ Закачка завершена: <b>{name}</b>",
     "download.complete_noname": "✅ Закачка завершена.",
+    "download.complete_with_link": (
+        "✅ «<b>{name}</b>» готов к просмотру\n🎬 {url}"
+    ),
+    "download.complete_episodes_header": (
+        "📺 «<b>{name}</b>» — закачка готова, доступно серий: {n}"
+    ),
+    "download.complete_episode_line": "S{season:02d}E{episode:02d} — {url}",
+    "download.complete_extra_line": "🎬 {url}",
+    "download.register_failed": (
+        "⚠️ Закачка «<b>{name}</b>» завершилась, но регистрация на "
+        "media-watch не удалась: {detail}"
+    ),
+    "whoami.user": "👤 Telegram id: <code>{tg_id}</code>\n🆔 Внутренний id: <code>{id}</code>",
+    "whoami.admin_yes": "🛡 Админ: да",
+    "whoami.admin_no": "🛡 Админ: нет",
     "download.show_all": "Показать ещё {n} ▾",
     "download.all_header": "Ещё раздачи:",
     "status.header": "Твои закачки:",

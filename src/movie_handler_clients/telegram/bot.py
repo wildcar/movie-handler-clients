@@ -13,14 +13,22 @@ from ..core.config import Settings, get_settings
 from ..core.i18n import t
 from ..core.logging_conf import configure_logging
 from ..core.mcp_client import MovieMetadataMCPClient
+from ..core.media_watch_client import MediaWatchClient, MediaWatchError
 from ..core.rtorrent_client import RtorrentMCPClient
+from ..core.state_db import (
+    MAX_REGISTER_ATTEMPTS,
+    Download,
+    DownloadWithUser,
+    StateDb,
+)
 from ..core.torrent_client import RutrackerTorrentMCPClient
 from ..core.traffic_log import TrafficLog
 from ..core.trailer_client import MovieTrailerMCPClient
-from .download_tracker import DownloadTracker
 from .handlers import details as details_handler
 from .handlers import search as search_handler
 from .handlers import status as status_handler
+from .handlers import whoami as whoami_handler
+from .movie_meta_cache import MovieMetaCache
 from .search_cache import SearchCache
 from .title_cache import TitleCache
 from .torrent_cache import TorrentCache
@@ -35,34 +43,152 @@ _POLL_INTERVAL = 60  # seconds between completion checks
 async def _poll_completions(
     bot: Bot,
     rtorrent: RtorrentMCPClient,
-    tracker: DownloadTracker,
+    state_db: StateDb,
+    media_watch: MediaWatchClient | None,
 ) -> None:
-    """Background task: notify users when their downloads finish."""
+    """Background task: pick up completed downloads, register them with
+    media-watch-web, and notify the user with the resulting watch link(s).
+    Persistent across restarts via state_db."""
     while True:
         await asyncio.sleep(_POLL_INTERVAL)
-        for hash_ in tracker.all_hashes():
+        try:
+            pending = state_db.list_pending()
+        except Exception as exc:
+            log.warning("poll.list_pending_failed", error=str(exc))
+            continue
+        for entry in pending:
             try:
-                payload = await rtorrent.get_download_status(hash_)
-            except Exception:
-                continue
-            if err := payload.get("error"):
-                code = (err or {}).get("code") if isinstance(err, dict) else None
-                if code == "not_found":
-                    tracker.untrack(hash_)
-                continue
-            dl = payload.get("download") or {}
-            if dl.get("state") != "complete":
-                continue
-            entry = tracker.get(hash_)
-            if entry is None:
-                continue
-            name = str(dl.get("name") or entry.title or "").strip()
-            msg = t("download.complete", name=_esc(name)) if name else t("download.complete_noname")
-            try:
-                await bot.send_message(entry.tg_user_id, msg, parse_mode="HTML")
+                await _process_one(bot, rtorrent, state_db, media_watch, entry)
             except Exception as exc:
-                log.warning("poll.notify_failed", user=entry.tg_user_id, error=str(exc))
-            tracker.untrack(hash_)
+                log.exception("poll.process_failed", hash=entry.download.info_hash, error=str(exc))
+
+
+async def _process_one(
+    bot: Bot,
+    rtorrent: RtorrentMCPClient,
+    state_db: StateDb,
+    media_watch: MediaWatchClient | None,
+    entry: DownloadWithUser,
+) -> None:
+    dl = entry.download
+    try:
+        payload = await rtorrent.get_download_status(dl.info_hash)
+    except Exception as exc:
+        log.warning("poll.rtorrent_failed", hash=dl.info_hash, error=str(exc))
+        return
+
+    if err := payload.get("error"):
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        if code == "not_found":
+            state_db.mark_cancelled(dl.info_hash, "rtorrent reports not_found")
+        return
+
+    rt_dl = payload.get("download") or {}
+    if rt_dl.get("state") != "complete":
+        return
+
+    directory = str(rt_dl.get("directory") or "").strip()
+    if not directory:
+        log.warning("poll.no_directory", hash=dl.info_hash)
+        return
+
+    chat_id_raw = entry.identity.chat_id or entry.identity.external_id
+    try:
+        chat_id = int(chat_id_raw) if chat_id_raw is not None else None
+    except ValueError:
+        chat_id = None
+
+    if media_watch is None:
+        # Media-watch-web isn't configured. Fall back to the legacy
+        # "download finished" message and mark the row as registered so
+        # we stop polling it.
+        name = str(rt_dl.get("name") or dl.title or "").strip()
+        msg = t("download.complete", name=_esc(name)) if name else t("download.complete_noname")
+        await _safe_send(bot, chat_id, msg)
+        state_db.mark_registered(dl.id)
+        return
+
+    # Try to register on media-watch.
+    try:
+        result = await media_watch.register(
+            path=directory,
+            title=dl.title,
+            kind=dl.kind,
+            imdb_id=dl.imdb_id,
+            description=dl.description,
+            poster_url=dl.poster_url,
+        )
+    except MediaWatchError as exc:
+        if dl.register_attempts + 1 >= MAX_REGISTER_ATTEMPTS:
+            state_db.mark_register_failed(dl.id, str(exc))
+            failed_msg = t(
+                "download.register_failed",
+                name=_esc(dl.title),
+                detail=_esc(str(exc)),
+            )
+            await _safe_send(bot, chat_id, failed_msg)
+            state_db.record_notification(
+                user_id=dl.user_id,
+                download_id=dl.id,
+                platform="telegram",
+                status="sent",
+            )
+        else:
+            state_db.mark_pending_register(dl.id, str(exc))
+            log.info(
+                "poll.register_retry_scheduled",
+                hash=dl.info_hash,
+                attempts=dl.register_attempts + 1,
+            )
+        return
+
+    records = result.get("records") or []
+    warnings = result.get("warnings") or []
+    if warnings:
+        log.info("media_watch.warnings", hash=dl.info_hash, warnings=warnings)
+
+    saved = state_db.insert_watch_records(dl.id, records)
+    state_db.mark_registered(dl.id)
+
+    msg = _format_completion_message(dl, saved)
+    await _safe_send(bot, chat_id, msg)
+    state_db.record_notification(
+        user_id=dl.user_id,
+        download_id=dl.id,
+        platform="telegram",
+        status="sent",
+    )
+
+
+def _format_completion_message(dl: Download, watch_records: list) -> str:  # type: ignore[type-arg]
+    if not watch_records:
+        return t("download.complete", name=_esc(dl.title))
+    if dl.kind == "series" and len(watch_records) > 1:
+        lines = [t("download.complete_episodes_header", name=_esc(dl.title), n=len(watch_records))]
+        for r in watch_records:
+            if r.season is not None and r.episode is not None:
+                lines.append(
+                    t(
+                        "download.complete_episode_line",
+                        season=r.season,
+                        episode=r.episode,
+                        url=r.watch_url,
+                    )
+                )
+            else:
+                lines.append(t("download.complete_extra_line", url=r.watch_url))
+        return "\n".join(lines)
+    return t("download.complete_with_link", name=_esc(dl.title), url=watch_records[0].watch_url)
+
+
+async def _safe_send(bot: Bot, chat_id: int | None, text: str) -> None:
+    if chat_id is None:
+        log.warning("notify.no_chat_id")
+        return
+    try:
+        await bot.send_message(chat_id, text, parse_mode="HTML", disable_web_page_preview=False)
+    except Exception as exc:
+        log.warning("notify.failed", chat=chat_id, error=str(exc))
 
 
 async def _run(settings: Settings) -> None:
@@ -70,6 +196,9 @@ async def _run(settings: Settings) -> None:
         traffic = TrafficLog(settings.log_db_path, ttl_days=settings.log_ttl_days)
         await traffic.open()
         stack.push_async_callback(traffic.close)
+
+        state_db = StateDb(path=settings.state_db_path)
+        stack.callback(state_db.close)
 
         mcp = await stack.enter_async_context(
             MovieMetadataMCPClient(
@@ -132,10 +261,30 @@ async def _run(settings: Settings) -> None:
                     error=str(exc),
                 )
 
+        # media-watch-web is opt-in too: when both URL and token are set
+        # we register completed downloads there and hand the user a
+        # watch link; when not configured, we keep the old "download
+        # finished" notification flow.
+        media_watch: MediaWatchClient | None = None
+        if settings.media_watch_base_url and settings.media_watch_api_token:
+            try:
+                media_watch = await stack.enter_async_context(
+                    MediaWatchClient(
+                        base_url=settings.media_watch_base_url,
+                        api_token=settings.media_watch_api_token,
+                    )
+                )
+            except (Exception, BaseExceptionGroup) as exc:
+                log.warning(
+                    "media_watch.unavailable",
+                    url=settings.media_watch_base_url,
+                    error=str(exc),
+                )
+
         bot = Bot(token=settings.telegram_bot_token)
         stack.push_async_callback(bot.session.close)
 
-        tracker = DownloadTracker()
+        admin_user_ids = settings.admin_user_ids()
 
         # aiogram injects any kwargs we pass to the Dispatcher constructor
         # into handlers that declare matching parameter names.
@@ -148,15 +297,20 @@ async def _run(settings: Settings) -> None:
             title_cache=TitleCache(),
             torrent_cache=TorrentCache(),
             trailer_cache=TrailerCache(),
-            tracker=tracker,
+            movie_meta_cache=MovieMetaCache(),
+            state_db=state_db,
+            admin_user_ids=admin_user_ids,
         )
         dp.include_router(status_handler.router)
+        dp.include_router(whoami_handler.router)
         dp.include_router(search_handler.router)
         dp.include_router(details_handler.router)
 
         log.info("bot.starting")
         if rtorrent is not None:
-            poll_task = asyncio.create_task(_poll_completions(bot, rtorrent, tracker))
+            poll_task = asyncio.create_task(
+                _poll_completions(bot, rtorrent, state_db, media_watch)
+            )
             stack.callback(poll_task.cancel)
         await dp.start_polling(bot)
 

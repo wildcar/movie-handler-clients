@@ -5,6 +5,32 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ---
 
+## 2026-04-25
+
+### Persistent state and media-watch-web hand-off on completion
+
+- Replace the in-memory `DownloadTracker` with a SQLite-backed
+  `DownloadStore` (default `.cache/state.sqlite`). Persists across bot
+  restarts so in-flight downloads aren't dropped on deploy.
+- New tables: `users`, `user_identities` (platform + external_id keyed,
+  ready for VK/web frontends), `downloads`, `watch_records`,
+  `notifications`. Users carry an `is_admin` flag bootstrapped from the
+  new `ADMIN_TELEGRAM_IDS` env (CSV).
+- New httpx client for the media-watch-web HTTP API
+  (`MEDIA_WATCH_BASE_URL` + `MEDIA_WATCH_API_TOKEN`).
+- On torrent add: persist `Download` row with `imdb_id`, `kind`, `title`,
+  `description`, `poster_url`. A new `MovieMetaCache` stashes the latter
+  two when the user opens the details card so the download tap doesn't
+  need a second `get_movie_details` round-trip.
+- Completion handler in `_poll_completions` now pulls `directory` from
+  `get_download_status`, POSTs to `/api/register`, persists each returned
+  watch link in `watch_records`, and sends the user a message containing
+  the `watch_url`(s). Registration failures are retried on subsequent
+  ticks up to 5 times before the row is marked `register_failed`.
+- New `/whoami` handler exposes the user's id and admin flag.
+
+---
+
 ## 2026-04-23
 
 ### Link rating labels in the details card
