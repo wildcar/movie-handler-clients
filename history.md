@@ -7,6 +7,25 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### Use the metadata title (not the rtorrent filename) for registered downloads
+
+- `_try_send_to_rtorrent` was persisting `dl.name` (rtorrent's release
+  name = the .torrent filename, e.g. `Marvel.One-Shot.Agent.Carter.
+  2013.BDRip.XviD.AC3.RUS.-Nesmertelnoe.oruzhie.avi`) as the
+  Download row's title, and that title bubbled all the way into the
+  watch page header on media-watch-web.
+- Reverse the precedence: prefer the cached title from the metadata
+  card («Короткометражка Marvel: Агент Картер»), append the year in
+  parens when known, and fall back to the rtorrent name only when
+  the cache has been evicted (bot restart between details view and
+  download tap).
+- Existing rows are not migrated — they keep their filename-style
+  title until re-registered.
+
+---
+
+## 2026-04-25
+
 ### Use rtorrent's `base_path` (not `directory`) for media-watch register
 
 - Caught in prod: every movie registered after the first ended up

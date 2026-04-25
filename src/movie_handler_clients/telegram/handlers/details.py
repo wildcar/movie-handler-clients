@@ -388,8 +388,16 @@ async def _try_send_to_rtorrent(
                 "last_name": cq.from_user.last_name,
             },
         )
+        # Prefer the human title from the metadata card (e.g. «Короткометражка
+        # Marvel: Агент Картер») over rtorrent's release name (which is just
+        # the .torrent filename). Filename only kicks in if metadata is gone.
         cached_title = title_cache.get(imdb_id) if imdb_id else None
-        title_for_db = name or (cached_title[0] if cached_title else "") or "?"
+        human_title = ""
+        if cached_title and cached_title[0]:
+            human_title = cached_title[0]
+            if cached_title[1]:
+                human_title = f"{human_title} ({cached_title[1]})"
+        title_for_db = human_title or name or "?"
         meta = movie_meta_cache.get(imdb_id) if imdb_id else None
         state_db.add_download(
             user_id=user.id,
