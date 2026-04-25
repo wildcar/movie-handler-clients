@@ -7,6 +7,24 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### Use rtorrent's `base_path` (not `directory`) for media-watch register
+
+- Caught in prod: every movie registered after the first ended up
+  pointing to whatever the largest video file was in the shared
+  download directory. Reason — `download.directory` is just the
+  parent dir (`/mnt/.../Movie/`), not the per-torrent payload path.
+  Our scanner picked the biggest file from the shared dir, so a 4K
+  Matrix release "stole" all subsequent registrations.
+- Fix: prefer `download.base_path` (the actual content path) over
+  `download.directory` in the completion poller. Falls back to
+  `directory` when base_path is empty (e.g. magnet that hasn't
+  resolved metadata yet).
+- Requires the bumped rtorrent-mcp that exposes `base_path`.
+
+---
+
+## 2026-04-25
+
 ### Persistent state and media-watch-web hand-off on completion
 
 - Replace the in-memory `DownloadTracker` with a SQLite-backed

@@ -87,9 +87,16 @@ async def _process_one(
     if rt_dl.get("state") != "complete":
         return
 
-    directory = str(rt_dl.get("directory") or "").strip()
-    if not directory:
-        log.warning("poll.no_directory", hash=dl.info_hash)
+    # Prefer ``base_path`` (the actual content path — file for single-file
+    # torrents, folder for multi-file) over ``directory`` (the shared
+    # download dir). Falling back to ``directory`` would point the
+    # registration at /mnt/.../Movie/ for *every* single-file torrent
+    # and our scanner would always pick the same largest file there.
+    payload_path = str(rt_dl.get("base_path") or "").strip()
+    if not payload_path:
+        payload_path = str(rt_dl.get("directory") or "").strip()
+    if not payload_path:
+        log.warning("poll.no_payload_path", hash=dl.info_hash)
         return
 
     chat_id_raw = entry.identity.chat_id or entry.identity.external_id
@@ -111,7 +118,7 @@ async def _process_one(
     # Try to register on media-watch.
     try:
         result = await media_watch.register(
-            path=directory,
+            path=payload_path,
             title=dl.title,
             kind=dl.kind,
             imdb_id=dl.imdb_id,

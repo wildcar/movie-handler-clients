@@ -35,7 +35,12 @@ async def test_completion_registers_and_notifies(tmp_path) -> None:  # type: ign
                 "download": {
                     "state": "complete",
                     "name": "Movie X",
-                    "directory": "/mnt/storage/Media/Video/Movie/Movie X",
+                    # `directory` is the shared download dir; `base_path`
+                    # is the actual file. Bot must prefer base_path so
+                    # single-file torrents don't all land on the largest
+                    # video file in the shared dir (real prod bug).
+                    "directory": "/mnt/storage/Media/Video/Movie",
+                    "base_path": "/mnt/storage/Media/Video/Movie/Movie X.mkv",
                 },
                 "error": None,
             }
@@ -63,7 +68,7 @@ async def test_completion_registers_and_notifies(tmp_path) -> None:  # type: ign
 
         media_watch.register.assert_awaited_once()
         kwargs = media_watch.register.call_args.kwargs
-        assert kwargs["path"] == "/mnt/storage/Media/Video/Movie/Movie X"
+        assert kwargs["path"] == "/mnt/storage/Media/Video/Movie/Movie X.mkv"
         assert kwargs["kind"] == "movie"
         assert kwargs["imdb_id"] == "tt1"
 
