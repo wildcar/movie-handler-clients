@@ -223,8 +223,11 @@ def trailer_alternatives_keyboard(
 
 
 def season_picker_keyboard(imdb_id: str, seasons: int) -> InlineKeyboardMarkup:
-    """Show one button per season plus an «All seasons» fallback that
-    runs the rutracker search without a season qualifier."""
+    """One button per season. No «All seasons» button — the per-result
+    button labels carry only resolution / release type, so a list mixing
+    single-season releases with multi-season bundles would be ambiguous
+    («Сезон: 1-5» indistinguishable from «Сезон: 3»). The bot filters
+    results to releases that cover exactly the chosen season."""
     rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
     for season in range(1, seasons + 1):
@@ -241,12 +244,6 @@ def season_picker_keyboard(imdb_id: str, seasons: int) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-    rows.append([
-        InlineKeyboardButton(
-            text=t("download.season_all"),
-            callback_data=f"dla:{imdb_id}",
-        )
-    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

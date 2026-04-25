@@ -7,6 +7,22 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-25
 
+### Strict single-season filter, drop «Все сезоны» button
+
+- The per-result keyboard rows only carry resolution / release type,
+  so a list mixing «Сезон: 1-5» bundles with «Сезон: 3» releases is
+  visually ambiguous — the user can't tell which is which at pick
+  time. Tighten the filter to releases whose parsed season set is
+  exactly `{chosen_season}`; bundles drop out.
+- Remove the «Все сезоны» button from the season picker — without
+  per-result season hints in the next list it produced the same
+  ambiguity. The `dla:` callback handler stays as a no-op safety
+  net for any older messages still in chats.
+
+---
+
+## 2026-04-25
+
 ### Series search: drop year, parse season ranges client-side
 
 - Caught on Breaking Bad / Во все тяжкие: rutracker has dozens of

@@ -355,7 +355,16 @@ async def _run_torrent_search(
     # dropped — for an explicit «Сезон N» pick they're noise.
     display_label = query
     if is_series and season is not None:
-        results = [r for r in results if season in _parse_seasons(str(r.get("title") or ""))]
+        # Strict-single-season filter: the result list keyboard only
+        # surfaces resolution / release type, so a multi-season bundle
+        # would be impossible to tell apart from a per-season release at
+        # pick time. Keep only releases that cover *exactly* the chosen
+        # season (e.g. «Сезон: 3 / Серии 1-13»), drop bundles like
+        # «Сезон: 1-5».
+        results = [
+            r for r in results
+            if _parse_seasons(str(r.get("title") or "")) == {season}
+        ]
         display_label = t("download.season_filter_label", title=title, season=season)
     elif is_series:
         display_label = title
