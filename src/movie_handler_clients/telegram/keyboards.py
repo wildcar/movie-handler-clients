@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..core.i18n import t
+
+# Cap on how many releases the bot surfaces in the torrent picker.
+# rutracker often returns 30+ rows for popular titles; the user only
+# ever picked from the top of the list.
+_MAX_TORRENT_ROWS = 10
 
 
 def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> InlineKeyboardMarkup:
@@ -20,10 +27,12 @@ def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> In
         if not imdb_id:
             continue
         rows.append(
-            [InlineKeyboardButton(
-                text=_search_button_label(item)[:64],
-                callback_data=f"d:{imdb_id}:{query_id}",
-            )]
+            [
+                InlineKeyboardButton(
+                    text=_search_button_label(item)[:64],
+                    callback_data=f"d:{imdb_id}:{query_id}",
+                )
+            ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -47,111 +56,82 @@ def _search_button_label(item: dict[str, object]) -> str:
     return label
 
 
-_5GB = 5 * 1024**3
-_15GB = 15 * 1024**3
-_PINNED_ICONS = ("🌕", "🌎", "🌞")  # 1st / 2nd / 3rd pinned buckets
-
-
 def _format_torrent_label(r: dict[str, object]) -> str:
-    """Unified button label: ``5.5 GB · HDR · 1080p · WEB-DL · ⬆️ 92``.
+    """Unified button label: ``2,3 Гб • раздают 133 • 720p • SDR``.
 
-    Each segment is skipped when the underlying field is missing, so a
-    minimally-parsed row still renders a clean row without empty dots.
+    Format is fixed (always four segments) so the user can scan a column
+    of releases by position. Resolution is normalised: ``2160p`` even
+    when the title says «4K», ``UNKp`` when nothing parseable is found.
+    HDR is binary — any HDR / HDR10[+] / Dolby Vision flag → ``HDR``,
+    otherwise ``SDR``. Source tags (BDRip / WEB-DL / etc.) are dropped
+    intentionally.
     """
-    parts: list[str] = []
     size_b = r.get("size_bytes")
-    if isinstance(size_b, int) and size_b > 0:
-        parts.append(_human_size_spaced(size_b))
-    if r.get("hdr"):
-        parts.append("HDR")
-    quality = r.get("quality")
-    if quality:
-        parts.append(str(quality))
-    source = r.get("source")
-    if source:
-        parts.append(str(source))
+    size_part = _human_size_ru(int(size_b)) if isinstance(size_b, int) and size_b > 0 else "? Б"
+
     seeders = r.get("seeders")
-    if isinstance(seeders, int):
-        parts.append(f"⬆️ {seeders}")
-    return " · ".join(parts)
+    seeders_part = f"раздают {int(seeders) if isinstance(seeders, int) else 0}"
+
+    resolution_part = _resolution_label(r)
+    hdr_part = "HDR" if r.get("hdr") else "SDR"
+
+    return f"{size_part} • {seeders_part} • {resolution_part} • {hdr_part}"
 
 
-def pinned_torrents(results: list[dict[str, object]]) -> list[dict[str, object]]:
-    """Return the three bucketed picks in order: ≤5 GB → 5–15 GB → HDR.
+_RES_NP_RE = re.compile(r"\b(\d{3,4})p\b", re.IGNORECASE)
+_RES_K_RE = re.compile(r"\b([248])\s*[Kk]\b")
+# 4K → 2160p, 8K → 4320p. (2K stays as a hint: rutracker uploaders use
+# it loosely for 1080p remasters; we don't translate.)
+_K_TO_P = {"4": "2160p", "8": "4320p"}
 
-    Each bucket is won by the highest-seeder entry; duplicates across
-    buckets are kept only in their first appearance so we never pin the
-    same row twice.
-    """
-    valid = [r for r in results if isinstance(r.get("topic_id"), int)]
 
-    def _size(r: dict) -> int:
-        s = r.get("size_bytes")
-        return int(s) if isinstance(s, int) else 0
-
-    def _seeds(r: dict) -> int:
-        s = r.get("seeders")
-        return int(s) if isinstance(s, int) else 0
-
-    def _best(pred) -> dict | None:
-        matches = [r for r in valid if pred(r)]
-        return max(matches, key=_seeds) if matches else None
-
-    picks = [
-        _best(lambda r: 0 < _size(r) <= _5GB),
-        _best(lambda r: _5GB < _size(r) <= _15GB),
-        _best(lambda r: bool(r.get("hdr"))),
-    ]
-
-    seen: set[int] = set()
-    out: list[dict[str, object]] = []
-    for p in picks:
-        if p is None:
-            continue
-        tid = int(p["topic_id"])  # type: ignore[arg-type]
-        if tid in seen:
-            continue
-        seen.add(tid)
-        out.append(p)
-    return out
+def _resolution_label(r: dict[str, object]) -> str:
+    quality = str(r.get("quality") or "")
+    m = _RES_NP_RE.fullmatch(quality)
+    if m:
+        return f"{m.group(1)}p"
+    title = str(r.get("title") or "")
+    m = _RES_NP_RE.search(title)
+    if m:
+        return f"{m.group(1)}p"
+    m = _RES_K_RE.search(title)
+    if m:
+        return _K_TO_P.get(m.group(1), "UNKp")
+    return "UNKp"
 
 
 def torrent_list_keyboard(
-    results: list[dict[str, object]], *, imdb_id: str = "", expand_all: bool = False
+    results: list[dict[str, object]], *, imdb_id: str = ""
 ) -> InlineKeyboardMarkup:
-    """Three pinned picks + «Показать ещё» button by default. When
-    ``expand_all`` is set, pin row(s) come first (icons retained) and
-    every remaining release is appended as its own row — used to
-    re-render the same message after the user taps «Показать ещё»."""
-    pinned = pinned_torrents(results)
-    pinned_ids = {int(r["topic_id"]) for r in pinned}  # type: ignore[arg-type]
-    rest = [
-        r for r in results
-        if isinstance(r.get("topic_id"), int) and r.get("topic_id") not in pinned_ids
-    ]
+    """Top releases sorted by seeders, capped at 10 rows.
 
+    The caller passes the raw rutracker-mcp results; we sort by seeders
+    descending, drop rows without a topic id, and render at most
+    ``_MAX_TORRENT_ROWS`` buttons. No pin/expand logic — the per-row
+    label carries enough context for the user to choose at a glance.
+    """
+    valid = [r for r in results if isinstance(r.get("topic_id"), int)]
+
+    def _seeders(r: dict[str, object]) -> int:
+        s = r.get("seeders")
+        return s if isinstance(s, int) else 0
+
+    valid.sort(key=_seeders, reverse=True)
     rows: list[list[InlineKeyboardButton]] = []
-    for i, r in enumerate(pinned):
-        topic_id = int(r["topic_id"])  # type: ignore[arg-type]
-        icon = _PINNED_ICONS[i] if i < len(_PINNED_ICONS) else ""
-        btn_label = f"{icon} {_format_torrent_label(r)}".strip()
+    for r in valid[:_MAX_TORRENT_ROWS]:
+        topic_id_raw = r["topic_id"]
+        if not isinstance(topic_id_raw, int):
+            continue
+        topic_id = topic_id_raw
         cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
-        rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=cb)])
-
-    if expand_all:
-        for r in rest:
-            topic_id = int(r["topic_id"])  # type: ignore[arg-type]
-            btn_label = _format_torrent_label(r)
-            cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
-            rows.append([InlineKeyboardButton(text=btn_label[:64], callback_data=cb)])
-    elif rest:
-        from ..core.i18n import t as _t
-        cb_all = f"torall:{imdb_id}" if imdb_id else "torall:"
-        rows.append([InlineKeyboardButton(
-            text=_t("download.show_all", n=len(rest)),
-            callback_data=cb_all,
-        )])
-
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=_format_torrent_label(r)[:64],
+                    callback_data=cb,
+                )
+            ]
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -174,12 +154,16 @@ def rutracker_url_candidates_keyboard(
             label = t("rt_url.candidate_button", title=title, year=year)
         else:
             label = t("rt_url.candidate_button_no_year", title=title)
-        rows.append([
-            InlineKeyboardButton(text=label[:64], callback_data=f"tdl:{topic_id}:{imdb_id}"),
-        ])
-    rows.append([
-        InlineKeyboardButton(text=t("rt_url.unlink_button"), callback_data=f"tdl:{topic_id}"),
-    ])
+        rows.append(
+            [
+                InlineKeyboardButton(text=label[:64], callback_data=f"tdl:{topic_id}:{imdb_id}"),
+            ]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(text=t("rt_url.unlink_button"), callback_data=f"tdl:{topic_id}"),
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -188,41 +172,31 @@ def torrent_confirm_keyboard(topic_id: int, imdb_id: str) -> InlineKeyboardMarku
     message. Callback `tdl:` triggers the actual rutracker fetch +
     rtorrent push (the bare `tor:` callback only opens the preview)."""
     cb = f"tdl:{topic_id}:{imdb_id}" if imdb_id else f"tdl:{topic_id}"
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=t("download.confirm_button"), callback_data=cb),
-    ]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text=t("download.confirm_button"), callback_data=cb),
+            ]
+        ]
+    )
 
 
-def torrent_all_keyboard(
-    results: list[dict[str, object]], *, imdb_id: str = ""
-) -> InlineKeyboardMarkup:
-    """List — same label format as pinned buttons, no icon prefix.
+def _human_size_ru(n: int) -> str:
+    """Russian-style size: ``2,3 Гб`` / ``540 Мб`` / ``999 Кб``.
 
-    Callers typically filter out the already-pinned entries before
-    passing ``results`` in, so «Ещё раздачи» really shows the remainder.
+    GB and TB are formatted with one decimal place using a comma; MB
+    and KB drop the fractional part since «540,0 Мб» reads worse than
+    «540 Мб» in a tight button label.
     """
-    rows: list[list[InlineKeyboardButton]] = []
-    for r in results:
-        topic_id = r.get("topic_id")
-        if not isinstance(topic_id, int):
-            continue
-        label = _format_torrent_label(r)
-        cb = f"tor:{topic_id}:{imdb_id}" if imdb_id else f"tor:{topic_id}"
-        rows.append([InlineKeyboardButton(text=label[:64], callback_data=cb)])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def _human_size_spaced(n: int) -> str:
-    """Human size with a space before the unit (design-matching)."""
     if n >= 1024**4:
-        return f"{n / 1024**4:.1f} TB"
+        return f"{n / 1024**4:.1f}".replace(".", ",") + " Тб"
     if n >= 1024**3:
-        return f"{n / 1024**3:.1f} GB"
+        return f"{n / 1024**3:.1f}".replace(".", ",") + " Гб"
     if n >= 1024**2:
-        return f"{n // 1024**2} MB"
+        return f"{n // 1024**2} Мб"
     if n >= 1024:
-        return f"{n // 1024} KB"
-    return f"{n} B"
+        return f"{n // 1024} Кб"
+    return f"{n} Б"
 
 
 _TRAILER_ICONS = {"trailer": "🎦", "teaser": "🎞", "clip": "📼", "featurette": "🎥"}
@@ -301,11 +275,15 @@ def details_keyboard(
     trailer_icon = "🧼" if kind == "series" else "🎦"
     top_row: list[InlineKeyboardButton] = []
     if query_id:
-        top_row.append(InlineKeyboardButton(text=t("details.button_back"), callback_data=f"b:{query_id}"))
-    top_row.append(InlineKeyboardButton(
-        text=f"{trailer_icon} {t('details.button_trailer')}",
-        callback_data=f"t:{imdb_id}",
-    ))
+        top_row.append(
+            InlineKeyboardButton(text=t("details.button_back"), callback_data=f"b:{query_id}")
+        )
+    top_row.append(
+        InlineKeyboardButton(
+            text=f"{trailer_icon} {t('details.button_trailer')}",
+            callback_data=f"t:{imdb_id}",
+        )
+    )
     rows: list[list[InlineKeyboardButton]] = [
         top_row,
         [InlineKeyboardButton(text=t("details.button_download"), callback_data=f"dl:{imdb_id}")],

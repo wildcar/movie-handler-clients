@@ -63,10 +63,7 @@ class Settings(BaseSettings):
 
     state_db_path: Path = Field(
         Path(".cache/state.sqlite"),
-        description=(
-            "SQLite file storing users, downloads and watch links across "
-            "bot restarts."
-        ),
+        description=("SQLite file storing users, downloads and watch links across bot restarts."),
     )
     media_watch_base_url: str | None = Field(
         None,

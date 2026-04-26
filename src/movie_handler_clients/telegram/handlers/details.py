@@ -248,9 +248,7 @@ async def on_download_season(
         await cq.answer(t("download.reopen_card"), show_alert=True)
         return
 
-    await _run_torrent_search(
-        cq, torrent, torrent_cache, title_cache, imdb_id, season=season
-    )
+    await _run_torrent_search(cq, torrent, torrent_cache, title_cache, imdb_id, season=season)
 
 
 @router.callback_query(F.data.startswith("dla:"))
@@ -360,10 +358,7 @@ async def _run_torrent_search(
         # pick time. Keep only releases that cover *exactly* the chosen
         # season (e.g. «Сезон: 3 / Серии 1-13»), drop bundles like
         # «Сезон: 1-5».
-        results = [
-            r for r in results
-            if _parse_seasons(str(r.get("title") or "")) == {season}
-        ]
+        results = [r for r in results if _parse_seasons(str(r.get("title") or "")) == {season}]
         display_label = t("download.season_filter_label", title=title, season=season)
     elif is_series:
         display_label = title
@@ -372,10 +367,12 @@ async def _run_torrent_search(
         await cq.message.answer(t("download.no_results"))
         return
 
-    # Cache results so the «Показать ещё» callback can show the full list.
+    # Cache results so the `tor:` preview callback can pull the full
+    # release title by topic_id without re-running the search.
     torrent_cache.put(imdb_id, results)
 
     from html import escape as _esc
+
     text = t("download.list_header", query=_esc(display_label), n=len(results))
     await cq.message.answer(
         text,
@@ -414,6 +411,7 @@ async def on_torrent_pick(
 
     rutracker_url = f"https://rutracker.org/forum/viewtopic.php?t={topic_id}"
     from html import escape as _esc
+
     if full_title:
         text = t(
             "download.confirm_message",
@@ -608,38 +606,6 @@ async def _try_send_to_rtorrent(
     message = t(dest_key, name=_esc(name)) if name else t("download.sent_to_server_noname")
     await cq.message.answer(message, parse_mode="HTML")
     return True
-
-
-@router.callback_query(F.data.startswith("torall:"))
-async def on_torrent_show_all(
-    cq: CallbackQuery,
-    torrent_cache: TorrentCache,
-) -> None:
-    """Replace the «Показать ещё» button with rows for every remaining
-    release. The list grows in place — pinned picks stay at the top
-    with their icons, the rest are appended below."""
-    imdb_id = (cq.data or "")[7:]
-    results = torrent_cache.get(imdb_id) if imdb_id else None
-    if not results or cq.message is None:
-        await cq.answer()
-        return
-    await cq.answer()
-    try:
-        await cq.message.edit_reply_markup(
-            reply_markup=torrent_list_keyboard(
-                results, imdb_id=imdb_id, expand_all=True
-            )
-        )
-    except Exception as exc:
-        # If editing fails (e.g. message too old), fall back to a fresh
-        # message so the user still gets the expanded list.
-        log.info("torrent.expand_edit_failed", error=str(exc))
-        await cq.message.answer(
-            t("download.all_header"),
-            reply_markup=torrent_list_keyboard(
-                results, imdb_id=imdb_id, expand_all=True
-            ),
-        )
 
 
 @router.callback_query(F.data.startswith("b:"))

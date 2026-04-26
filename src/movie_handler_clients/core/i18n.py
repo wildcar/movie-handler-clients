@@ -25,7 +25,7 @@ RU: Final[dict[str, str]] = {
     "details.button_back": "← К списку",
     "stub.trailer": "🎬 Сервис трейлеров временно недоступен.",
     "stub.download": "⬇️ Сервис скачивания временно недоступен.",
-    "download.list_header": "<b>{query}</b>\n{n} раздач, выбери для скачивания:",
+    "download.list_header": ("<b>{query}</b>\n{n} раздач, выберите размер и качество:"),
     "download.searching": "🔎 Ищу раздачи…",
     "download.fetching": "⬇️ Скачиваю .torrent…",
     "download.no_results": "⬇️ Ничего не нашлось на rutracker.",
@@ -38,12 +38,10 @@ RU: Final[dict[str, str]] = {
     "download.reopen_card": "Открой карточку фильма заново и нажми «Скачать».",
     "download.sent_caption": "✅ Торрент-файл готов.",
     "download.sent_to_server": (
-        "✅ Поставил на закачку на сервере: <b>{name}</b>\n"
-        "/status — посмотреть прогресс"
+        "✅ Поставил на закачку на сервере: <b>{name}</b>\n/status — посмотреть прогресс"
     ),
     "download.sent_to_server_series": (
-        "📺 Поставил на закачку (сериал): <b>{name}</b>\n"
-        "/status — посмотреть прогресс"
+        "📺 Поставил на закачку (сериал): <b>{name}</b>\n/status — посмотреть прогресс"
     ),
     "download.sent_to_server_noname": (
         "✅ Поставил на закачку на сервере.\n/status — посмотреть прогресс"
@@ -62,30 +60,21 @@ RU: Final[dict[str, str]] = {
     "trailer.kind.other": "Видео",
     "download.complete": "✅ Закачка завершена: <b>{name}</b>",
     "download.complete_noname": "✅ Закачка завершена.",
-    "download.complete_with_link": (
-        "✅ «<b>{name}</b>» загружен\n🎬 {url}"
-    ),
+    "download.complete_with_link": ("✅ «<b>{name}</b>» загружен\n🎬 {url}"),
     "download.complete_episodes_header": (
         "📺 «<b>{name}</b>» — закачка готова, доступно серий: {n}"
     ),
     "download.complete_episode_line": "S{season:02d}E{episode:02d} — {url}",
     "download.complete_extra_line": "🎬 {url}",
     "download.register_failed": (
-        "⚠️ Закачка «<b>{name}</b>» завершилась, но регистрация на "
-        "media-watch не удалась: {detail}"
+        "⚠️ Закачка «<b>{name}</b>» завершилась, но регистрация на media-watch не удалась: {detail}"
     ),
     "whoami.user": "👤 Telegram id: <code>{tg_id}</code>\n🆔 Внутренний id: <code>{id}</code>",
     "whoami.admin_yes": "🛡 Админ: да",
     "whoami.admin_no": "🛡 Админ: нет",
-    "download.show_all": "Показать ещё {n} ▾",
-    "download.all_header": "Ещё раздачи:",
     "download.confirm_button": "⬇️ Скачать",
-    "download.confirm_message": (
-        "<b>{title}</b>\n\n🔗 <a href=\"{url}\">Открыть на rutracker</a>"
-    ),
-    "download.confirm_message_no_title": (
-        "🔗 <a href=\"{url}\">Открыть раздачу на rutracker</a>"
-    ),
+    "download.confirm_message": ('<b>{title}</b>\n\n🔗 <a href="{url}">Открыть на rutracker</a>'),
+    "download.confirm_message_no_title": ('🔗 <a href="{url}">Открыть раздачу на rutracker</a>'),
     "download.pick_season": "Какой сезон скачать?",
     "download.season_label": "Сезон {n}",
     "download.season_all": "Все сезоны",
@@ -103,12 +92,10 @@ RU: Final[dict[str, str]] = {
     "rt_url.fetching": "🔎 Смотрю раздачу на rutracker…",
     "rt_url.topic_failed": "Не удалось получить страницу раздачи: {detail}",
     "rt_url.candidates_header": (
-        "📦 <b>{title}</b>\n\n"
-        "Похоже на один из этих фильмов — выбери, чтобы привязать карточку:"
+        "📦 <b>{title}</b>\n\nПохоже на один из этих фильмов — выбери, чтобы привязать карточку:"
     ),
     "rt_url.no_match_header": (
-        "📦 <b>{title}</b>\n\n"
-        "Не нашёл в базе фильмов. Можно скачать без привязки."
+        "📦 <b>{title}</b>\n\nНе нашёл в базе фильмов. Можно скачать без привязки."
     ),
     "rt_url.candidate_button": "{title} ({year})",
     "rt_url.candidate_button_no_year": "{title}",

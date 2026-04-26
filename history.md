@@ -7,6 +7,33 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-26
 
+### Torrent picker — flat top-10 list with size/seeders/resolution/HDR
+
+**Why.** The bucketed «3 пина + Показать ещё» layout was hard to scan
+at a glance — pinned icons (🌕/🌎/🌞) carried no semantic meaning,
+the «Показать ещё» step added a click, and per-row labels mixed
+resolution with source tags (BDRip/WEB-DL) the user didn't actually
+filter on. New format collapses the picker to a single sorted list.
+
+**What.**
+- Header text: `<title>\n{n} раздач, выберите размер и качество:`.
+- Up to 10 buttons, sorted by seeders descending. No pin/expand.
+- Per-button label: `2,3 Гб • раздают 133 • 720p • SDR`.
+  - Russian-style size with comma decimals (`Гб`, `Мб`, `Кб`, `Тб`).
+  - Resolution normalised: `Np` first (parsed quality, then a regex
+    over the title), then `4K → 2160p` / `8K → 4320p`, otherwise
+    `UNKp`. Source tags (BDRip/WEB-DL) are gone.
+  - HDR is binary — any HDR / HDR10 / HDR10+ / Dolby Vision flag →
+    `HDR`, otherwise `SDR`.
+- Removed: `pinned_torrents`, `torrent_all_keyboard`,
+  `_PINNED_ICONS`, `_5GB`/`_15GB` thresholds, the `torall:` callback
+  handler `on_torrent_show_all`, and the `download.show_all` /
+  `download.all_header` i18n keys (now unused).
+
+---
+
+## 2026-04-26
+
 ### Composite media-id + pasted-rutracker-URL flow
 
 **Why.** Two intertwined needs: (a) the bot's `state.sqlite` keyed

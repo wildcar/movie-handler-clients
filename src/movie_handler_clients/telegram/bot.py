@@ -331,9 +331,7 @@ async def _run(settings: Settings) -> None:
 
         log.info("bot.starting")
         if rtorrent is not None:
-            poll_task = asyncio.create_task(
-                _poll_completions(bot, rtorrent, state_db, media_watch)
-            )
+            poll_task = asyncio.create_task(_poll_completions(bot, rtorrent, state_db, media_watch))
             stack.callback(poll_task.cancel)
         await dp.start_polling(bot)
 

@@ -104,9 +104,7 @@ class MediaWatchClient:
         if resp.is_success:
             return payload if isinstance(payload, dict) else {}
         message = (
-            payload.get("message")
-            if isinstance(payload, dict)
-            else f"HTTP {resp.status_code}"
+            payload.get("message") if isinstance(payload, dict) else f"HTTP {resp.status_code}"
         )
         log.warning("media_watch.error", op=op, status=resp.status_code, body=payload)
         raise MediaWatchError(

@@ -99,9 +99,7 @@ async def on_rutracker_url(
         return
 
     display_title, search_title, year = _clean_topic_title(raw_title)
-    candidates = await _find_candidates(
-        mcp, search_title, year, tg_user_id=tg_user_id
-    )
+    candidates = await _find_candidates(mcp, search_title, year, tg_user_id=tg_user_id)
     # Pre-populate caches so the downstream `tdl:` confirm picks up the
     # right kind/poster without re-fetching.
     for c in candidates:
