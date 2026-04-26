@@ -56,11 +56,15 @@ class MediaWatchClient:
         path: str,
         title: str,
         kind: str,
-        imdb_id: str | None = None,
+        media_id: str,
         description: str = "",
         poster_url: str = "",
     ) -> dict[str, Any]:
         """POST /api/register. Returns the parsed JSON body on 200.
+
+        ``media_id`` is the composite ``<source>-<id>`` key
+        (``rt-<topic_id>`` / ``imdb-tt…`` / ``yt-<video_id>``);
+        media-watch-web validates the format server-side.
 
         Raises ``MediaWatchError`` on any non-2xx response, with the
         decoded body attached for the caller to log/inspect.
@@ -69,9 +73,8 @@ class MediaWatchClient:
             "path": path,
             "title": title,
             "kind": kind,
+            "media_id": media_id,
         }
-        if imdb_id:
-            body["imdb_id"] = imdb_id
         if description:
             body["description"] = description
         if poster_url:

@@ -19,6 +19,7 @@ def _make_pending(db: StateDb, *, kind: str = "movie") -> tuple[StateDb, int]:
         info_hash="cc" * 20,
         kind=kind,
         title="Movie X",
+        media_id="rt-12345",
         imdb_id="tt1",
         description="d",
         poster_url="p",
@@ -70,7 +71,7 @@ async def test_completion_registers_and_notifies(tmp_path) -> None:  # type: ign
         kwargs = media_watch.register.call_args.kwargs
         assert kwargs["path"] == "/mnt/storage/Media/Video/Movie/Movie X.mkv"
         assert kwargs["kind"] == "movie"
-        assert kwargs["imdb_id"] == "tt1"
+        assert kwargs["media_id"] == "rt-12345"
 
         bot.send_message.assert_awaited_once()
         sent_text = bot.send_message.call_args.args[1]

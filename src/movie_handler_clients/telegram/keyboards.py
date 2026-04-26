@@ -155,6 +155,34 @@ def torrent_list_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def rutracker_url_candidates_keyboard(
+    topic_id: int,
+    candidates: list[dict[str, object]],
+) -> InlineKeyboardMarkup:
+    """Buttons rendered after a user pastes a rutracker URL: one row per
+    matched movie/series from movie-metadata-mcp (carries the imdb id),
+    plus a final «Скачать без привязки» row that goes straight to the
+    confirm step with no imdb attached."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for c in candidates:
+        imdb_id = str(c.get("imdb_id") or "")
+        if not imdb_id:
+            continue
+        title = str(c.get("title") or "?")
+        year = c.get("year")
+        if isinstance(year, int):
+            label = t("rt_url.candidate_button", title=title, year=year)
+        else:
+            label = t("rt_url.candidate_button_no_year", title=title)
+        rows.append([
+            InlineKeyboardButton(text=label[:64], callback_data=f"tdl:{topic_id}:{imdb_id}"),
+        ])
+    rows.append([
+        InlineKeyboardButton(text=t("rt_url.unlink_button"), callback_data=f"tdl:{topic_id}"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 def torrent_confirm_keyboard(topic_id: int, imdb_id: str) -> InlineKeyboardMarkup:
     """Single «Скачать» button shown under the release confirmation
     message. Callback `tdl:` triggers the actual rutracker fetch +

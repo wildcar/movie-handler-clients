@@ -100,6 +100,19 @@ RU: Final[dict[str, str]] = {
     "list.series_episode": '   <a href="{url}">S{season:02d}E{episode:02d}</a>',
     "list.series_extra": '   <a href="{url}">Доп. файл</a>',
     "errors.generic": "Что-то пошло не так. Попробуй ещё раз чуть позже.",
+    "rt_url.fetching": "🔎 Смотрю раздачу на rutracker…",
+    "rt_url.topic_failed": "Не удалось получить страницу раздачи: {detail}",
+    "rt_url.candidates_header": (
+        "📦 <b>{title}</b>\n\n"
+        "Похоже на один из этих фильмов — выбери, чтобы привязать карточку:"
+    ),
+    "rt_url.no_match_header": (
+        "📦 <b>{title}</b>\n\n"
+        "Не нашёл в базе фильмов. Можно скачать без привязки."
+    ),
+    "rt_url.candidate_button": "{title} ({year})",
+    "rt_url.candidate_button_no_year": "{title}",
+    "rt_url.unlink_button": "Скачать без привязки",
 }
 
 

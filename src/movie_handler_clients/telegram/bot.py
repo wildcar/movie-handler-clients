@@ -27,6 +27,7 @@ from ..core.traffic_log import TrafficLog
 from ..core.trailer_client import MovieTrailerMCPClient
 from .handlers import details as details_handler
 from .handlers import list as list_handler
+from .handlers import rutracker_url as rutracker_url_handler
 from .handlers import search as search_handler
 from .handlers import status as status_handler
 from .handlers import whoami as whoami_handler
@@ -123,7 +124,7 @@ async def _process_one(
             path=payload_path,
             title=dl.title,
             kind=dl.kind,
-            imdb_id=dl.imdb_id,
+            media_id=dl.media_id,
             description=dl.description,
             poster_url=dl.poster_url,
         )
@@ -313,6 +314,10 @@ async def _run(settings: Settings) -> None:
         dp.include_router(status_handler.router)
         dp.include_router(list_handler.router)
         dp.include_router(whoami_handler.router)
+        # rutracker URL must come *before* the search router — the search
+        # handler matches anything not starting with `/`, so a pasted URL
+        # would otherwise land there as a free-text query.
+        dp.include_router(rutracker_url_handler.router)
         dp.include_router(search_handler.router)
         dp.include_router(details_handler.router)
 

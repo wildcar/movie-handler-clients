@@ -5,6 +5,75 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ---
 
+## 2026-04-26
+
+### Composite media-id + pasted-rutracker-URL flow
+
+**Why.** Two intertwined needs: (a) the bot's `state.sqlite` keyed
+downloads by `imdb_id`, so two rutracker releases of the same film
+collided on a single PK; (b) users wanted to drop a rutracker topic
+URL straight into the chat without going through the search flow.
+Both fall out cleanly from a typed composite id (`<source>-<id>`).
+
+**Schema (state.sqlite).**
+- New `downloads.media_id TEXT NOT NULL` column. Format
+  `rt-<topic_id>` for every rutracker download (today, all of them).
+  `imdb-tt…` reserved for future imdb-only flows; `yt-<video_id>` for
+  the YouTube TODO.
+- `imdb_id` stays as a *nullable* metadata column — used for poster /
+  trailer / `/list` grouping but no longer a key.
+- Schema reset via `PRAGMA user_version`: bumps from 0/1 → 2 by
+  dropping `downloads`, `watch_records`, `notifications` (users +
+  user_identities preserved). No backfill — by agreement with the
+  user, old `tt…` rows are abandoned and the bot re-registers fresh
+  on the next download. Pair with `media-watch-web` running
+  `bin/wipe-records.php --yes`.
+
+**API contract.**
+- `MediaWatchClient.register(...)` now takes `media_id` instead of
+  `imdb_id`; sends it in the body verbatim. Server-side validation
+  rejects malformed prefixes.
+
+**Pasted-rutracker-URL handler** (`telegram/handlers/rutracker_url.py`).
+- Regex on every text message: `rutracker.org/forum/viewtopic.php?t=`.
+  Router registered *before* `search` so the broad `^[^/]` filter
+  doesn't swallow URLs.
+- Calls the new `rutracker-torrent-mcp.get_topic_info(topic_id)` to
+  pull title + forum context (no .torrent fetch yet).
+- Title cleanup: take the part before the first ` / ` for display
+  (Russian title); keep both halves for the metadata search query;
+  pull year from the `[YYYY, …]` bracket.
+- `movie-metadata-mcp.search_movie` with cleaned title (+year). Drop
+  results without imdb_id; rank by year-match, then descending year.
+  Keep top 3 candidates.
+- 1 candidate → preview message with that imdb attached, single
+  `tdl:<topic_id>:<imdb>` confirm button.
+- >1 candidates → buttons «Это X» / «Это Y» / … plus «Скачать без
+  привязки» (`tdl:<topic_id>` with empty imdb).
+- 0 candidates → preview + single `tdl:<topic_id>` (unlinked).
+- Pre-populates `title_cache` and `movie_meta_cache` for every
+  candidate so the downstream `tdl:` confirm picks up kind + poster
+  without an extra round-trip.
+
+**Confirm handler glue.** `_try_send_to_rtorrent` now takes a
+`media_id` kwarg; the existing search-flow callers compute it as
+`f"rt-{topic_id}"` from the `tdl:` callback's topic_id. The same
+value flows through `state_db.add_download` → poller →
+`MediaWatchClient.register`.
+
+**Deploy ordering** (also recorded in `media-watch-web/history.md`):
+1. Roll out `media-watch-web` first; run `bin/wipe-records.php --yes`
+   on the media host.
+2. Then roll out `movie-handler-clients`. The bot's first start
+   triggers the schema-reset migration automatically; `state.sqlite`
+   loses pending downloads but users + identities survive.
+
+**TODO logged.** YouTube pasted-URL flow is queued in
+`AGENTS-TODO.md` — mirrors this handler but needs a `yt-dlp`-driven
+MCP server, since rtorrent doesn't speak YouTube.
+
+---
+
 ## 2026-04-25
 
 ### «Показать ещё» expands in place; release pick gets a confirmation step

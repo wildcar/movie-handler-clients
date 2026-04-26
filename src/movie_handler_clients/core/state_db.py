@@ -65,7 +65,18 @@ class Download:
     user_id: int
     info_hash: str
     kind: str
+    media_id: str
+    """Composite media id, registered with media-watch-web. Format
+    ``<source>-<id>``: ``rt-<topic_id>`` for rutracker downloads,
+    ``imdb-tt…`` when no torrent source is known, ``yt-<video_id>``
+    for future YouTube records. The bot picks the prefix at insert
+    time so different rutracker releases of the same film no longer
+    collide on a single PK.
+    """
     imdb_id: str | None
+    """Optional metadata link for poster/trailer lookups. Not a key —
+    multiple downloads can share the same imdb_id with different
+    media_ids."""
     title: str
     description: str
     poster_url: str
@@ -131,7 +142,37 @@ class StateDb:
             finally:
                 cur.close()
 
+    # Bump this when the downloads/watch_records/notifications shape
+    # changes. On a version mismatch the three tables are dropped and
+    # re-created — users + user_identities are preserved (no schema
+    # change there). The bot's own caches are in-memory, so wipe is
+    # safe; the on-disk media survives because rtorrent + media files
+    # are owned by separate components.
+    SCHEMA_VERSION = 2
+
     def _ensure_schema(self) -> None:
+        with self._tx() as cur:
+            cur.execute("PRAGMA user_version")
+            current = int(cur.fetchone()[0])
+            if current != self.SCHEMA_VERSION:
+                # Reset only the three tables that own the new media_id
+                # surface. CASCADE on watch_records/notifications would
+                # already drop them via downloads, but explicit drops
+                # make the migration trivial to reason about.
+                cur.executescript(
+                    """
+                    DROP TABLE IF EXISTS notifications;
+                    DROP TABLE IF EXISTS watch_records;
+                    DROP TABLE IF EXISTS downloads;
+                    """
+                )
+                cur.execute(f"PRAGMA user_version = {self.SCHEMA_VERSION}")
+                log.info(
+                    "state_db.schema_reset",
+                    from_version=current,
+                    to_version=self.SCHEMA_VERSION,
+                )
+
         ddl = """
         CREATE TABLE IF NOT EXISTS users (
             id            INTEGER PRIMARY KEY,
@@ -158,6 +199,7 @@ class StateDb:
             user_id            INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             info_hash          TEXT NOT NULL UNIQUE,
             kind               TEXT NOT NULL,
+            media_id           TEXT NOT NULL,
             imdb_id            TEXT,
             title              TEXT NOT NULL,
             description        TEXT NOT NULL DEFAULT '',
@@ -306,6 +348,7 @@ class StateDb:
         info_hash: str,
         kind: str,
         title: str,
+        media_id: str,
         imdb_id: str | None = None,
         description: str = "",
         poster_url: str = "",
@@ -318,13 +361,14 @@ class StateDb:
             cur.execute(
                 """
                 INSERT INTO downloads (
-                    user_id, info_hash, kind, imdb_id, title, description,
+                    user_id, info_hash, kind, media_id, imdb_id, title, description,
                     poster_url, state, state_message, source,
                     register_attempts, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'downloading', '', ?, 0, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'downloading', '', ?, 0, ?, ?)
                 ON CONFLICT(info_hash) DO UPDATE SET
                     user_id = excluded.user_id,
                     title = excluded.title,
+                    media_id = excluded.media_id,
                     imdb_id = COALESCE(excluded.imdb_id, downloads.imdb_id),
                     description = CASE
                         WHEN excluded.description != '' THEN excluded.description
@@ -338,6 +382,7 @@ class StateDb:
                     user_id,
                     info_hash_norm,
                     kind,
+                    media_id,
                     imdb_id,
                     title,
                     description,
@@ -590,6 +635,7 @@ def _row_to_download(row: sqlite3.Row) -> Download:
         user_id=int(row["user_id"]),
         info_hash=str(row["info_hash"]),
         kind=str(row["kind"]),
+        media_id=str(row["media_id"]),
         imdb_id=str(row["imdb_id"]) if row["imdb_id"] else None,
         title=str(row["title"]),
         description=str(row["description"] or ""),

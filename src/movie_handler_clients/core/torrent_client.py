@@ -30,3 +30,11 @@ class RutrackerTorrentMCPClient(BaseMCPClient):
         return await self.call_tool(
             "get_torrent_file", {"topic_id": topic_id}, tg_user_id=tg_user_id
         )
+
+    async def get_topic_info(
+        self, topic_id: int, *, tg_user_id: int | None = None
+    ) -> dict[str, Any]:
+        """Fetch title + forum + size for a rutracker topic. No .torrent download."""
+        return await self.call_tool(
+            "get_topic_info", {"topic_id": topic_id}, tg_user_id=tg_user_id
+        )

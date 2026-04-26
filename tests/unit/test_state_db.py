@@ -32,6 +32,7 @@ def test_download_lifecycle(tmp_path) -> None:  # type: ignore[no-untyped-def]
             info_hash="aabb" * 10,
             kind="movie",
             title="T",
+            media_id="rt-12345",
             imdb_id="tt1",
             description="desc",
             poster_url="p",
@@ -39,10 +40,11 @@ def test_download_lifecycle(tmp_path) -> None:  # type: ignore[no-untyped-def]
         assert d.state == "downloading"
         assert d.info_hash == ("aabb" * 10).upper()
         assert d.description == "desc"
+        assert d.media_id == "rt-12345"
 
         # idempotent re-add — keeps id, refreshes title.
         d2 = db.add_download(
-            user_id=u.id, info_hash="aabb" * 10, kind="movie", title="T2"
+            user_id=u.id, info_hash="aabb" * 10, kind="movie", title="T2", media_id="rt-12345"
         )
         assert d2.id == d.id
         assert d2.title == "T2"
@@ -83,7 +85,7 @@ def test_pending_includes_telegram_identity(tmp_path) -> None:  # type: ignore[n
     try:
         u = db.upsert_telegram_user(tg_user_id=99, chat_id=12345)
         db.add_download(
-            user_id=u.id, info_hash="ff" * 20, kind="series", title="Show"
+            user_id=u.id, info_hash="ff" * 20, kind="series", title="Show", media_id="rt-77"
         )
         pending = db.list_pending()
         assert len(pending) == 1
