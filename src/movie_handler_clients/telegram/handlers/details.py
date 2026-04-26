@@ -468,7 +468,7 @@ async def on_torrent_confirm(
     # rutracker round-trip is in flight.
     try:
         await cq.message.edit_reply_markup(reply_markup=None)
-    except Exception:  # noqa: BLE001 — best-effort UI cleanup
+    except Exception:
         pass
 
     try:
@@ -630,7 +630,7 @@ async def on_torrent_show_all(
                 results, imdb_id=imdb_id, expand_all=True
             )
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         # If editing fails (e.g. message too old), fall back to a fresh
         # message so the user still gets the expanded list.
         log.info("torrent.expand_edit_failed", error=str(exc))
