@@ -82,7 +82,7 @@ def _format_row(dl: dict[str, Any]) -> str:
         icon = "✅"
         eta = ""
     elif state == "active":
-        icon = "⬇️"
+        icon = "↓"
         eta = "  " + _format_eta(size, done, rate) if size > 0 else ""
     elif state == "paused":
         icon = "⏸"

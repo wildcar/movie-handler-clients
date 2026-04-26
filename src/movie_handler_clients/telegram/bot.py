@@ -324,8 +324,8 @@ async def _run(settings: Settings) -> None:
         await bot.set_my_commands(
             [
                 BotCommand(command="status", description="Прогресс закачек"),
-                BotCommand(command="list", description="Моя медиатека"),
-                BotCommand(command="whoami", description="Кто я для бота"),
+                BotCommand(command="list", description="Медиатека"),
+                BotCommand(command="whoami", description="Профиль в боте"),
             ]
         )
 

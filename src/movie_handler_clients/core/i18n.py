@@ -8,10 +8,10 @@ from typing import Final
 
 RU: Final[dict[str, str]] = {
     "start.greeting": (
-        "Привет! Я помогу найти фильм, посмотреть трейлер или скачать его.\n\n"
-        "Просто пришли название фильма — например, «Дюна» или «Dune 2021»."
+        "Здравствуйте! Бот поможет найти фильм, посмотреть трейлер или скачать его.\n\n"
+        "Пришлите название фильма — например, «Дюна» или «Dune 2021»."
     ),
-    "search.empty_query": "Пришли название фильма текстом.",
+    "search.empty_query": "Пришлите название фильма текстом.",
     "search.no_results": "Ничего не нашлось по запросу «{query}».",
     "search.error": "Не удалось выполнить поиск: {detail}",
     "search.results_header": "«{query}»:",
@@ -21,21 +21,21 @@ RU: Final[dict[str, str]] = {
     "details.not_found": "Похоже, этого фильма больше нет в базе.",
     "details.sources_failed": "⚠️ Недоступны источники: {sources}",
     "details.button_trailer": "Трейлер",
-    "details.button_download": "⬇️ Скачать",
+    "details.button_download": "↓ Скачать",
     "details.button_back": "← К списку",
     "stub.trailer": "🎬 Сервис трейлеров временно недоступен.",
-    "stub.download": "⬇️ Сервис скачивания временно недоступен.",
+    "stub.download": "↓ Сервис скачивания временно недоступен.",
     "download.list_header": ("<b>{query}</b>\n{n} раздач, выберите размер и качество:"),
     "download.searching": "🔎 Ищу раздачи…",
-    "download.fetching": "⬇️ Скачиваю .torrent…",
-    "download.no_results": "⬇️ Ничего не нашлось на rutracker.",
+    "download.fetching": "↓ Скачиваю .torrent…",
+    "download.no_results": "↓ Ничего не нашлось на rutracker.",
     "download.error": "Не удалось получить раздачи: {detail}",
     "download.captcha": (
-        "rutracker просит капчу — зайди вручную в браузере и обнови cookie "
+        "rutracker просит капчу — войдите вручную в браузере и обновите cookie "
         "bb_session в файле сервиса."
     ),
     "download.not_configured": "На сервере не заданы логин и пароль rutracker.",
-    "download.reopen_card": "Открой карточку фильма заново и нажми «Скачать».",
+    "download.reopen_card": "Откройте карточку фильма заново и нажмите «Скачать».",
     "download.sent_caption": "✅ Торрент-файл готов.",
     "download.sent_to_server": (
         "✅ Поставил на закачку на сервере: <b>{name}</b>\n/status — посмотреть прогресс"
@@ -72,27 +72,27 @@ RU: Final[dict[str, str]] = {
     "whoami.user": "👤 Telegram id: <code>{tg_id}</code>\n🆔 Внутренний id: <code>{id}</code>",
     "whoami.admin_yes": "🛡 Админ: да",
     "whoami.admin_no": "🛡 Админ: нет",
-    "download.confirm_button": "⬇️ Скачать",
+    "download.confirm_button": "↓ Скачать",
     "download.confirm_message": ('<b>{title}</b>\n\n🔗 <a href="{url}">Открыть на rutracker</a>'),
     "download.confirm_message_no_title": ('🔗 <a href="{url}">Открыть раздачу на rutracker</a>'),
     "download.pick_season": "Какой сезон скачать?",
     "download.season_label": "Сезон {n}",
     "download.season_all": "Все сезоны",
     "download.season_filter_label": "{title} — сезон {season}",
-    "status.header": "Твои закачки:",
-    "status.no_downloads": "У тебя нет отслеживаемых закачек.",
-    "status.not_configured": "⬇️ Сервер закачек не настроен.",
-    "list.header": "Твоя медиатека:",
-    "list.empty": "Пока ничего нет. Найди фильм текстом и нажми «⬇️ Скачать».",
+    "status.header": "Список закачек:",
+    "status.no_downloads": "Отслеживаемых закачек нет.",
+    "status.not_configured": "↓ Сервер закачек не настроен.",
+    "list.header": "Медиатека:",
+    "list.empty": "Пока ничего нет. Пришлите название фильма и нажмите «↓ Скачать».",
     "list.movie_link": '<a href="{url}">{title}</a>',
     "list.series_header": "📺 <b>{title}</b>",
     "list.series_episode": '   <a href="{url}">S{season:02d}E{episode:02d}</a>',
     "list.series_extra": '   <a href="{url}">Доп. файл</a>',
-    "errors.generic": "Что-то пошло не так. Попробуй ещё раз чуть позже.",
+    "errors.generic": "Что-то пошло не так. Попробуйте ещё раз чуть позже.",
     "rt_url.fetching": "🔎 Смотрю раздачу на rutracker…",
     "rt_url.topic_failed": "Не удалось получить страницу раздачи: {detail}",
     "rt_url.candidates_header": (
-        "📦 <b>{title}</b>\n\nПохоже на один из этих фильмов — выбери, чтобы привязать карточку:"
+        "📦 <b>{title}</b>\n\nПохоже на один из этих фильмов — выберите, чтобы привязать карточку:"
     ),
     "rt_url.no_match_header": (
         "📦 <b>{title}</b>\n\nНе нашёл в базе фильмов. Можно скачать без привязки."

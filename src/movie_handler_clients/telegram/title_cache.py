@@ -1,7 +1,7 @@
 """Tiny in-process cache for the title/year/kind/seasons of a recently
 viewed movie.
 
-Used when the user taps «⬇️ Скачать» on a details card: the callback data
+Used when the user taps «↓ Скачать» on a details card: the callback data
 only carries the IMDb id, and we need the human-readable title+year to
 build a rutracker query (plus ``kind`` to route the download to the right
 directory on the media server, and ``seasons`` to render the season picker

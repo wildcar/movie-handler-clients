@@ -66,7 +66,7 @@ async def on_details(
         await cq.answer(t("details.not_found"), show_alert=True)
         return
 
-    # Remember title+year for the later "⬇️ Скачать" callback, which only
+    # Remember title+year for the later "↓ Скачать" callback, which only
     # carries the IMDb id — we don't want to re-fetch details just to
     # build the rutracker query.
     year_val = details.get("year")
