@@ -356,7 +356,13 @@ class StateDb:
     ) -> Download:
         """Insert (or, if the same hash exists, return-as-is) a download row."""
         now = _now_iso()
-        info_hash_norm = info_hash.upper()
+        # ``info_hash`` is overloaded: BitTorrent info hashes for rutracker
+        # rows (rtorrent-mcp returns them uppercase), task ids for yt-dlp
+        # rows (yt-dlp-mcp returns lowercase hex). Upper-casing was the
+        # original BT-style hygiene but corrupts the yt-dlp lookup key.
+        # Apply only to BT-shaped (40-char hex) values; pass everything
+        # else through verbatim.
+        info_hash_norm = _normalise_info_hash(info_hash)
         with self._tx() as cur:
             cur.execute(
                 """
@@ -398,7 +404,9 @@ class StateDb:
 
     def get_download_by_hash(self, info_hash: str) -> Download | None:
         with self._tx() as cur:
-            cur.execute("SELECT * FROM downloads WHERE info_hash=?", (info_hash.upper(),))
+            cur.execute(
+                "SELECT * FROM downloads WHERE info_hash=?", (_normalise_info_hash(info_hash),)
+            )
             row = cur.fetchone()
         return _row_to_download(row) if row else None
 
@@ -521,7 +529,7 @@ class StateDb:
                        updated_at=?
                  WHERE info_hash=?
                 """,
-                (message, now, info_hash.upper()),
+                (message, now, _normalise_info_hash(info_hash)),
             )
 
     # --------------------------------------------------------- watch_records
@@ -599,6 +607,17 @@ class StateDb:
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
+
+
+def _normalise_info_hash(info_hash: str) -> str:
+    """``info_hash`` is overloaded: BitTorrent info hashes (rutracker rows)
+    are 40-char hex and traditionally upper-cased; yt-dlp task ids are
+    lowercase 16-hex (or other shapes for future sources). Upper-casing
+    only the BT shape keeps both lookup paths consistent and avoids
+    accidentally corrupting the yt-dlp key."""
+    if len(info_hash) == 40 and all(c in "0123456789abcdefABCDEF" for c in info_hash):
+        return info_hash.upper()
+    return info_hash
 
 
 def _row_to_user(row: sqlite3.Row | None) -> User:
