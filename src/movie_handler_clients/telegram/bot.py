@@ -437,7 +437,6 @@ async def _run(settings: Settings) -> None:
                 BotCommand(command="start", description="Что я умею"),
                 BotCommand(command="status", description="Прогресс закачек"),
                 BotCommand(command="list", description="Медиатека"),
-                BotCommand(command="whoami", description="Профиль в боте"),
             ]
         )
 
