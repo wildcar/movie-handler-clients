@@ -46,6 +46,14 @@ class Settings(BaseSettings):
             "file to the user directly."
         ),
     )
+    yt_dlp_mcp_url: str | None = Field(
+        None,
+        description=(
+            "Streamable-HTTP endpoint of yt-dlp-mcp on the media server. "
+            "When unset, the bot can't process YouTube / Vimeo / Twitch / … "
+            "URLs and falls back to «ссылка не распознана»."
+        ),
+    )
     mcp_auth_token: str = Field(
         ...,
         description="Bearer token sent to every MCP server request.",

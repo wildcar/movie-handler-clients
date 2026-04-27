@@ -7,6 +7,55 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ## 2026-04-27
 
+### Pasted-YouTube-URL flow + generic yt-dlp downloads
+
+**Why.** Cross-repo plan from the `AGENTS-TODO.md` queue: users want
+to drop a YouTube (or any yt-dlp-supported) URL into chat and get the
+same mid-pipeline preview-and-confirm UX as for rutracker. The new
+`yt-dlp-mcp` server (separate repo) handles the actual download on
+the media host; the bot wires the chat side and the completion
+poller.
+
+**What.**
+- New `core/yt_dlp_client.py`: thin wrapper around `yt-dlp-mcp`'s
+  five tools (`probe`, `start_download`, `get_download_status`,
+  `list_playlist`, `health_check`).
+- New `yt_dlp_mcp_url` setting (opt-in; bot keeps running fine when
+  unset).
+- `handlers/youtube_url.py`: claims any `https?://…` text. Rutracker
+  URLs fall through to the existing `rutracker_url` router (registered
+  earlier). Playlist URLs (`?list=…`) → `list_playlist` → plain-text
+  list of videos with hyperlinks; user copies one and pastes back to
+  start a real download. Single video → `probe` → preview card with
+  thumbnail / title / channel / duration + `↓ Скачать` button. On
+  confirm → `start_download` → state.sqlite row with `source="yt-dlp"`,
+  `info_hash=<task_id>`, `media_id="yt-<video_id>"` (or
+  `dl-<sha1[:12]>` for non-YouTube hosts), `kind="movie"`.
+- Live streams refused upfront with a dedicated message.
+- `bot.py` poller refactored: `_process_one` dispatches by
+  `download.source` to either `_process_rtorrent` or
+  `_process_ytdlp`. The shared register-and-notify flow lives in
+  `_register_and_notify` so both branches converge on the same media-
+  watch register call + completion message.
+- `ydl_cache.py`: short-lived `token → (url, title)` map so the
+  confirm callback can fit inside Telegram's 64-byte `callback_data`.
+- New i18n keys for «Смотрю видео…» / «Поставил на скачивание…» /
+  «Ссылка не распознана…» / playlist header & rows.
+- Existing `test_completion_flow.py` updated for the new
+  `_process_one` signature; new test covers the yt-dlp branch
+  (`get_download_status` → register with `output_path`).
+
+**Pair this deploy with `media-watch-web` 2026-04-27 (`media_id`
+regex extended to `dl-…`).** Without it, registrations of non-YouTube
+sources 400 with «invalid_argument».
+
+**TODO migration.** The «YouTube URL pasted-link flow» entry is
+removed from `AGENTS-TODO.md` — shipped here.
+
+---
+
+## 2026-04-27
+
 ### `kind=cartoon` plumbing + 🎨 visual marker
 
 **Why.** Cross-repo cartoon flow: animated movies route to

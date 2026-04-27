@@ -25,17 +25,20 @@ from ..core.state_db import (
 from ..core.torrent_client import RutrackerTorrentMCPClient
 from ..core.traffic_log import TrafficLog
 from ..core.trailer_client import MovieTrailerMCPClient
+from ..core.yt_dlp_client import YtDlpMCPClient
 from .handlers import details as details_handler
 from .handlers import list as list_handler
 from .handlers import rutracker_url as rutracker_url_handler
 from .handlers import search as search_handler
 from .handlers import status as status_handler
 from .handlers import whoami as whoami_handler
+from .handlers import youtube_url as youtube_url_handler
 from .movie_meta_cache import MovieMetaCache
 from .search_cache import SearchCache
 from .title_cache import TitleCache
 from .torrent_cache import TorrentCache
 from .trailer_cache import TrailerCache
+from .ydl_cache import YtDlpCache
 
 log = structlog.get_logger(__name__)
 
@@ -45,13 +48,16 @@ _POLL_INTERVAL = 60  # seconds between completion checks
 
 async def _poll_completions(
     bot: Bot,
-    rtorrent: RtorrentMCPClient,
+    rtorrent: RtorrentMCPClient | None,
+    yt_dlp: YtDlpMCPClient | None,
     state_db: StateDb,
     media_watch: MediaWatchClient | None,
 ) -> None:
     """Background task: pick up completed downloads, register them with
     media-watch-web, and notify the user with the resulting watch link(s).
-    Persistent across restarts via state_db."""
+    Persistent across restarts via state_db. Dispatches per row by
+    ``download.source`` — yt-dlp tasks go through ``yt-dlp-mcp``,
+    everything else through rtorrent."""
     while True:
         await asyncio.sleep(_POLL_INTERVAL)
         try:
@@ -61,12 +67,31 @@ async def _poll_completions(
             continue
         for entry in pending:
             try:
-                await _process_one(bot, rtorrent, state_db, media_watch, entry)
+                await _process_one(bot, rtorrent, yt_dlp, state_db, media_watch, entry)
             except Exception as exc:
                 log.exception("poll.process_failed", hash=entry.download.info_hash, error=str(exc))
 
 
 async def _process_one(
+    bot: Bot,
+    rtorrent: RtorrentMCPClient | None,
+    yt_dlp: YtDlpMCPClient | None,
+    state_db: StateDb,
+    media_watch: MediaWatchClient | None,
+    entry: DownloadWithUser,
+) -> None:
+    dl = entry.download
+    if dl.source == "yt-dlp":
+        if yt_dlp is None:
+            return  # poller can't talk to the MCP, leave the row pending
+        await _process_ytdlp(bot, yt_dlp, state_db, media_watch, entry)
+    else:
+        if rtorrent is None:
+            return
+        await _process_rtorrent(bot, rtorrent, state_db, media_watch, entry)
+
+
+async def _process_rtorrent(
     bot: Bot,
     rtorrent: RtorrentMCPClient,
     state_db: StateDb,
@@ -102,6 +127,71 @@ async def _process_one(
         log.warning("poll.no_payload_path", hash=dl.info_hash)
         return
 
+    rt_name = str(rt_dl.get("name") or "").strip()
+    await _register_and_notify(bot, state_db, media_watch, entry, payload_path, rt_name=rt_name)
+
+
+async def _process_ytdlp(
+    bot: Bot,
+    yt_dlp: YtDlpMCPClient,
+    state_db: StateDb,
+    media_watch: MediaWatchClient | None,
+    entry: DownloadWithUser,
+) -> None:
+    """yt-dlp path. ``info_hash`` carries the task_id we got from
+    ``start_download``. Status states come from yt-dlp-mcp:
+    queued/running → keep polling; complete → register; failed →
+    mark_cancelled."""
+    dl = entry.download
+    try:
+        payload = await yt_dlp.get_download_status(dl.info_hash)
+    except Exception as exc:
+        log.warning("poll.ytdlp_failed", task_id=dl.info_hash, error=str(exc))
+        return
+
+    if err := payload.get("error"):
+        code = (err or {}).get("code") if isinstance(err, dict) else None
+        if code == "not_found":
+            # yt-dlp-mcp lost the task (e.g. the SQLite store was wiped).
+            # Without status we can't finalise; treat as cancelled.
+            state_db.mark_cancelled(dl.info_hash, "yt-dlp reports not_found")
+        return
+
+    task = payload.get("task") or {}
+    state = str(task.get("state") or "")
+    if state in ("queued", "running"):
+        return
+    if state in ("failed", "cancelled"):
+        msg = str(task.get("error") or f"yt-dlp state={state}")
+        state_db.mark_cancelled(dl.info_hash, msg)
+        return
+    if state != "complete":
+        log.info("poll.ytdlp_unknown_state", task_id=dl.info_hash, state=state)
+        return
+
+    output_path = str(task.get("output_path") or "").strip()
+    if not output_path:
+        log.warning("poll.ytdlp_no_output_path", task_id=dl.info_hash)
+        return
+
+    await _register_and_notify(bot, state_db, media_watch, entry, output_path)
+
+
+async def _register_and_notify(
+    bot: Bot,
+    state_db: StateDb,
+    media_watch: MediaWatchClient | None,
+    entry: DownloadWithUser,
+    payload_path: str,
+    *,
+    rt_name: str = "",
+) -> None:
+    """Shared post-completion path: try to register the file on
+    media-watch-web, save the resulting watch records, send the user
+    the watch link, and mark the download as registered. On
+    media-watch failure we retry up to ``MAX_REGISTER_ATTEMPTS`` times
+    before giving up."""
+    dl = entry.download
     chat_id_raw = entry.identity.chat_id or entry.identity.external_id
     try:
         chat_id = int(chat_id_raw) if chat_id_raw is not None else None
@@ -109,16 +199,13 @@ async def _process_one(
         chat_id = None
 
     if media_watch is None:
-        # Media-watch-web isn't configured. Fall back to the legacy
-        # "download finished" message and mark the row as registered so
-        # we stop polling it.
-        name = str(rt_dl.get("name") or dl.title or "").strip()
+        # No media-watch — fall back to a plain «closed» notification.
+        name = (rt_name or dl.title or "").strip()
         msg = t("download.complete", name=_esc(name)) if name else t("download.complete_noname")
         await _safe_send(bot, chat_id, msg)
         state_db.mark_registered(dl.id)
         return
 
-    # Try to register on media-watch.
     try:
         result = await media_watch.register(
             path=payload_path,
@@ -271,6 +358,25 @@ async def _run(settings: Settings) -> None:
                     error=str(exc),
                 )
 
+        # yt-dlp MCP — opt-in. When unset, pasted YouTube/Vimeo/Twitch
+        # URLs land on «ссылка не распознана».
+        yt_dlp: YtDlpMCPClient | None = None
+        if settings.yt_dlp_mcp_url:
+            try:
+                yt_dlp = await stack.enter_async_context(
+                    YtDlpMCPClient(
+                        url=settings.yt_dlp_mcp_url,
+                        auth_token=settings.mcp_auth_token,
+                        traffic_log=traffic,
+                    )
+                )
+            except (Exception, BaseExceptionGroup) as exc:
+                log.warning(
+                    "yt_dlp_mcp.unavailable",
+                    url=settings.yt_dlp_mcp_url,
+                    error=str(exc),
+                )
+
         # media-watch-web is opt-in too: when both URL and token are set
         # we register completed downloads there and hand the user a
         # watch link; when not configured, we keep the old "download
@@ -303,21 +409,26 @@ async def _run(settings: Settings) -> None:
             trailer=trailer,
             torrent=torrent,
             rtorrent=rtorrent,
+            yt_dlp=yt_dlp,
             search_cache=SearchCache(),
             title_cache=TitleCache(),
             torrent_cache=TorrentCache(),
             trailer_cache=TrailerCache(),
             movie_meta_cache=MovieMetaCache(),
+            ydl_cache=YtDlpCache(),
             state_db=state_db,
             admin_user_ids=admin_user_ids,
         )
         dp.include_router(status_handler.router)
         dp.include_router(list_handler.router)
         dp.include_router(whoami_handler.router)
-        # rutracker URL must come *before* the search router — the search
-        # handler matches anything not starting with `/`, so a pasted URL
-        # would otherwise land there as a free-text query.
+        # URL routers come *before* the search router — search matches
+        # anything not starting with `/`, so a pasted URL would land there
+        # as free-text. rutracker first because its filter is the
+        # narrowest; youtube_url claims everything http(s) it sees and
+        # would otherwise swallow rutracker links.
         dp.include_router(rutracker_url_handler.router)
+        dp.include_router(youtube_url_handler.router)
         dp.include_router(search_handler.router)
         dp.include_router(details_handler.router)
 
@@ -330,8 +441,10 @@ async def _run(settings: Settings) -> None:
         )
 
         log.info("bot.starting")
-        if rtorrent is not None:
-            poll_task = asyncio.create_task(_poll_completions(bot, rtorrent, state_db, media_watch))
+        if rtorrent is not None or yt_dlp is not None:
+            poll_task = asyncio.create_task(
+                _poll_completions(bot, rtorrent, yt_dlp, state_db, media_watch)
+            )
             stack.callback(poll_task.cancel)
         await dp.start_polling(bot)
 

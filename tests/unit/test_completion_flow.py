@@ -65,7 +65,7 @@ async def test_completion_registers_and_notifies(tmp_path) -> None:  # type: ign
         bot = SimpleNamespace(send_message=AsyncMock())
 
         entry = db.list_pending()[0]
-        await _process_one(bot, rtorrent, db, media_watch, entry)  # type: ignore[arg-type]
+        await _process_one(bot, rtorrent, None, db, media_watch, entry)  # type: ignore[arg-type]
 
         media_watch.register.assert_awaited_once()
         kwargs = media_watch.register.call_args.kwargs
@@ -106,7 +106,7 @@ async def test_completion_register_failure_retries_then_gives_up(tmp_path) -> No
 
         for _ in range(MAX_REGISTER_ATTEMPTS):
             entry = db.list_pending()[0]
-            await _process_one(bot, rtorrent, db, media_watch, entry)  # type: ignore[arg-type]
+            await _process_one(bot, rtorrent, None, db, media_watch, entry)  # type: ignore[arg-type]
 
         download = db.get_download_by_hash("cc" * 20)
         assert download is not None and download.state == "register_failed"
@@ -132,10 +132,68 @@ async def test_no_media_watch_falls_back_to_legacy_message(tmp_path) -> None:  #
         )
         bot = SimpleNamespace(send_message=AsyncMock())
         entry = db.list_pending()[0]
-        await _process_one(bot, rtorrent, db, None, entry)  # type: ignore[arg-type]
+        await _process_one(bot, rtorrent, None, db, None, entry)  # type: ignore[arg-type]
 
         bot.send_message.assert_awaited_once()
         download = db.get_download_by_hash("cc" * 20)
+        assert download is not None and download.state == "registered"
+    finally:
+        db.close()
+
+
+async def test_ytdlp_completion_registers_via_output_path(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    """yt-dlp branch: poller resolves output_path via get_download_status,
+    then runs the same register-and-notify path as rtorrent."""
+    db = StateDb(path=tmp_path / "s.sqlite")
+    try:
+        user = db.upsert_telegram_user(tg_user_id=42, chat_id=42)
+        db.add_download(
+            user_id=user.id,
+            info_hash="task1234abcd",  # task_id, not BT info hash
+            kind="movie",
+            title="Veritasium video",
+            media_id="yt-aBcDeFg1234",
+            source="yt-dlp",
+            description="d",
+            poster_url="p",
+        )
+
+        yt_dlp = AsyncMock()
+        yt_dlp.get_download_status = AsyncMock(
+            return_value={
+                "task": {
+                    "task_id": "task1234abcd",
+                    "state": "complete",
+                    "output_path": "/mnt/storage/Media/Video/Clip/veritasium/foo.mp4",
+                },
+                "error": None,
+            }
+        )
+        media_watch = AsyncMock()
+        media_watch.register = AsyncMock(
+            return_value={
+                "records": [
+                    {
+                        "id": "yt-aBcDeFg1234",
+                        "watch_url": "https://v.example/watch/yt-aBcDeFg1234",
+                        "stream_url": "https://v.example/stream/yt-aBcDeFg1234",
+                        "file_path": "/mnt/storage/Media/Video/Clip/veritasium/foo.mp4",
+                        "season": None,
+                        "episode": None,
+                    }
+                ],
+                "warnings": [],
+            }
+        )
+        bot = SimpleNamespace(send_message=AsyncMock())
+        entry = db.list_pending()[0]
+        await _process_one(bot, None, yt_dlp, db, media_watch, entry)  # type: ignore[arg-type]
+
+        kwargs = media_watch.register.call_args.kwargs
+        assert kwargs["path"] == "/mnt/storage/Media/Video/Clip/veritasium/foo.mp4"
+        assert kwargs["media_id"] == "yt-aBcDeFg1234"
+
+        download = db.get_download_by_hash("task1234abcd")
         assert download is not None and download.state == "registered"
     finally:
         db.close()
@@ -181,7 +239,7 @@ async def test_series_completion_lists_all_episodes(tmp_path) -> None:  # type: 
         )
         bot = SimpleNamespace(send_message=AsyncMock())
         entry = db.list_pending()[0]
-        await _process_one(bot, rtorrent, db, media_watch, entry)  # type: ignore[arg-type]
+        await _process_one(bot, rtorrent, None, db, media_watch, entry)  # type: ignore[arg-type]
 
         sent_text = bot.send_message.call_args.args[1]
         assert "S01E01" in sent_text and "S01E02" in sent_text

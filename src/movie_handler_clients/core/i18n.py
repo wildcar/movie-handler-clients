@@ -101,6 +101,22 @@ RU: Final[dict[str, str]] = {
     "rt_url.candidate_button": "{title} ({year})",
     "rt_url.candidate_button_no_year": "{title}",
     "rt_url.unlink_button": "Скачать без привязки",
+    "ydl.fetching": "🔎 Смотрю видео…",
+    "ydl.unsupported": ("Ссылка не распознана как ссылка на трекер или видео."),
+    "ydl.preview": ("<b>{title}</b>\n{channel} · {duration}"),
+    "ydl.preview_no_channel": "<b>{title}</b>\n{duration}",
+    "ydl.confirm_button": "↓ Скачать",
+    "ydl.start_failed": "Не удалось поставить на скачивание: {detail}",
+    "ydl.queued": ("↓ Поставил на скачивание: <b>{title}</b>\n/status — посмотреть прогресс"),
+    "ydl.live_unsupported": "Прямые трансляции не поддерживаются.",
+    "ydl.playlist_header": (
+        "📋 <b>{title}</b>\n"
+        "Плейлист на {n} {video_word}. Скопируйте ссылку нужного "
+        "видео и пришлите в чат:"
+    ),
+    "ydl.playlist_truncated_hint": "(показаны первые {limit} из {total})",
+    "ydl.playlist_entry": '{n}. <a href="{url}">{title}</a> ({duration})',
+    "ydl.duration_unknown": "—",
 }
 
 
