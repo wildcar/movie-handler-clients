@@ -71,9 +71,17 @@ async def on_details(
     # build the rutracker query.
     year_val = details.get("year")
     seasons_val = details.get("number_of_seasons")
-    kind_hint = _kind_from_search_cache(search_cache, query_id, imdb_id)
-    if kind_hint is None:
-        kind_hint = "series" if details.get("kind") == "series" else "movie"
+    # Cartoon detection happens server-side in get_movie_details (genre
+    # overlay on movie-shaped titles), so details.kind=cartoon overrides
+    # any search-cache hint — search_movie can't produce «cartoon» since
+    # it doesn't have the title's genre list.
+    details_kind = details.get("kind")
+    if details_kind == "cartoon":
+        kind_hint = "cartoon"
+    else:
+        kind_hint = _kind_from_search_cache(search_cache, query_id, imdb_id)
+        if kind_hint is None:
+            kind_hint = "series" if details_kind == "series" else "movie"
     title_cache.put(
         imdb_id,
         str(details.get("title") or details.get("original_title") or ""),
@@ -696,6 +704,8 @@ def _kind_from_search_cache(
         kind = item.get("kind")
         if kind == "series":
             return "series"
+        if kind == "cartoon":
+            return "cartoon"
         if kind == "movie":
             return "movie"
         return None

@@ -143,7 +143,7 @@ def format_details(payload: dict[str, Any]) -> str:
     """Render a ``get_movie_details`` envelope into an HTML caption (DetailsV2 layout)."""
     movie = payload.get("details") or {}
     kind = movie.get("kind") or "movie"
-    icon = "🧼" if kind == "series" else "🎦"
+    icon = "🧼" if kind == "series" else "🎨" if kind == "cartoon" else "🎦"
     title = escape(str(movie.get("title") or "—"))
     original = movie.get("original_title")
     year = movie.get("year")

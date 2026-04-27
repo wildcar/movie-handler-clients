@@ -13,7 +13,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from typing import Literal
 
-Kind = Literal["movie", "series"]
+Kind = Literal["movie", "series", "cartoon"]
 TitleEntry = tuple[str, int | None, Kind | None, int | None]
 
 

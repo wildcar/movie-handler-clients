@@ -270,9 +270,9 @@ def details_keyboard(
     """DetailsV2: [Back | Trailer] on top row, [⬇ Download] full-width below.
 
     The trailer button's icon mirrors the title kind (🎦 for movies,
-    🧼 for series) so the card reads consistently.
+    🧼 for series, 🎨 for cartoons) so the card reads consistently.
     """
-    trailer_icon = "🧼" if kind == "series" else "🎦"
+    trailer_icon = "🧼" if kind == "series" else "🎨" if kind == "cartoon" else "🎦"
     top_row: list[InlineKeyboardButton] = []
     if query_id:
         top_row.append(

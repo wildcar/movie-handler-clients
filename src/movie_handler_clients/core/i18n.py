@@ -85,6 +85,7 @@ RU: Final[dict[str, str]] = {
     "list.header": "Медиатека:",
     "list.empty": "Пока ничего нет. Пришлите название фильма и нажмите «↓ Скачать».",
     "list.movie_link": '<a href="{url}">{title}</a>',
+    "list.cartoon_link": '🎨 <a href="{url}">{title}</a>',
     "list.series_header": "📺 <b>{title}</b>",
     "list.series_episode": '   <a href="{url}">S{season:02d}E{episode:02d}</a>',
     "list.series_extra": '   <a href="{url}">Доп. файл</a>',

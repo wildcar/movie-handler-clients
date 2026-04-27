@@ -57,6 +57,8 @@ async def on_list(message: Message, state_db: StateDb) -> None:
 
 
 def _format_movie(dl: Download, rec: WatchRecord) -> str:
+    if dl.kind == "cartoon":
+        return t("list.cartoon_link", url=rec.watch_url, title=_esc(dl.title))
     return t("list.movie_link", url=rec.watch_url, title=_esc(dl.title))
 
 

@@ -5,6 +5,37 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ---
 
+## 2026-04-27
+
+### `kind=cartoon` plumbing + 🎨 visual marker
+
+**Why.** Cross-repo cartoon flow: animated movies route to
+`/mnt/storage/Media/Video/Cartoon/` instead of `Movie/`, with a 🎨
+marker in the chat UI. Detection is centralised in
+`movie-metadata-mcp` (genre + filename heuristic) — the bot just
+plumbs the new kind through.
+
+**What.**
+- `Kind` literal extended: `"movie" | "series" | "cartoon"`.
+- `on_details` prefers `details.kind` when it's `"cartoon"` (overrides
+  the search-cache hint, which can only ever produce movie/series).
+- `format_details` and `details_keyboard` swap the title icon to 🎨
+  for cartoon.
+- `/list` renders cartoon entries with a 🎨 prefix via the new
+  `list.cartoon_link` i18n key. Series formatting is unchanged.
+- The `tdl:` confirm path passes `kind=cartoon` through to
+  `rtorrent-mcp.add_torrent` and downstream `media_watch.register`,
+  so the file lands in `Cartoon/` and the watch record persists with
+  `kind=cartoon`.
+- No new completion-message variant — cartoons share the movie
+  «Поставил на закачку…» template by design.
+
+**Deploy ordering.** Pair this with `movie-metadata-mcp`,
+`rtorrent-mcp`, and `media-watch-web` updates — all four need to
+ship together for the new kind to flow end-to-end.
+
+---
+
 ## 2026-04-26
 
 ### Torrent picker — flat top-10 list with size/seeders/resolution/HDR
