@@ -576,6 +576,44 @@ class StateDb:
             out.append(_row_to_watch(row))
         return out
 
+    def prune_missing_watch_records(self, live_media_watch_ids: Iterable[str]) -> int:
+        """Drop every watch record whose ``media_watch_id`` is *not* in the
+        live set, then drop downloads that have no watch records left.
+        Returns the number of watch_records removed (downloads cascade
+        from the schema's FK ON DELETE CASCADE on download_id … wait,
+        actually the cascade goes the other way: deleting a download
+        removes its watch_records, not the reverse). So we explicitly
+        delete orphan downloads in a second pass.
+
+        Used by the bot's periodic sync against media-watch-web's
+        ``GET /api/records``: anything we have but the server doesn't is
+        either a file the user deleted or a row the sweep already
+        cleaned. Either way it shouldn't show up in ``/list``."""
+        live = set(live_media_watch_ids)
+        with self._tx() as cur:
+            # Pull existing media_watch_ids so we can compute the diff in
+            # Python — `WHERE … NOT IN (…)` chokes on big lists in
+            # SQLite, and our catalogue is small enough that the round
+            # trip is cheap.
+            cur.execute("SELECT id, media_watch_id FROM watch_records")
+            rows = cur.fetchall()
+            stale = [int(r["id"]) for r in rows if str(r["media_watch_id"]) not in live]
+            if stale:
+                placeholders = ",".join("?" for _ in stale)
+                cur.execute(f"DELETE FROM watch_records WHERE id IN ({placeholders})", stale)
+            # Drop registered downloads whose only watch_records were
+            # just removed. Non-registered downloads (in flight, failed,
+            # cancelled) don't have watch_records to begin with — leave
+            # those alone.
+            cur.execute(
+                """
+                DELETE FROM downloads
+                 WHERE state = 'registered'
+                   AND id NOT IN (SELECT DISTINCT download_id FROM watch_records)
+                """
+            )
+        return len(stale)
+
     def list_watch_records(self, download_id: int) -> list[WatchRecord]:
         with self._tx() as cur:
             cur.execute(

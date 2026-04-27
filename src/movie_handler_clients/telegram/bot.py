@@ -44,6 +44,7 @@ log = structlog.get_logger(__name__)
 
 
 _POLL_INTERVAL = 60  # seconds between completion checks
+_PRUNE_INTERVAL_TICKS = 60  # one prune per ~hour, ridden along with the poller
 
 
 async def _poll_completions(
@@ -57,9 +58,16 @@ async def _poll_completions(
     media-watch-web, and notify the user with the resulting watch link(s).
     Persistent across restarts via state_db. Dispatches per row by
     ``download.source`` — yt-dlp tasks go through ``yt-dlp-mcp``,
-    everything else through rtorrent."""
+    everything else through rtorrent.
+
+    Once an hour the same loop also runs a prune pass: pulls the list
+    of live record ids from media-watch-web and drops any local
+    ``watch_records`` (and their owning ``downloads``) that aren't on
+    the server anymore, so files deleted from disk fall out of /list."""
+    tick = 0
     while True:
         await asyncio.sleep(_POLL_INTERVAL)
+        tick += 1
         try:
             pending = state_db.list_pending()
         except Exception as exc:
@@ -70,6 +78,15 @@ async def _poll_completions(
                 await _process_one(bot, rtorrent, yt_dlp, state_db, media_watch, entry)
             except Exception as exc:
                 log.exception("poll.process_failed", hash=entry.download.info_hash, error=str(exc))
+
+        if media_watch is not None and tick % _PRUNE_INTERVAL_TICKS == 0:
+            try:
+                live_ids = await media_watch.list_record_ids()
+                removed = state_db.prune_missing_watch_records(live_ids)
+                if removed:
+                    log.info("poll.prune", removed=removed, live=len(live_ids))
+            except Exception as exc:
+                log.warning("poll.prune_failed", error=str(exc))
 
 
 async def _process_one(

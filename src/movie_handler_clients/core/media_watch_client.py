@@ -83,6 +83,19 @@ class MediaWatchClient:
         resp = await self._client().post("/api/register", json=body)
         return self._unwrap(resp, "register")
 
+    async def list_record_ids(self) -> list[str]:
+        """Return every record id media-watch-web currently has.
+
+        Used by the bot's periodic prune to discover deletions: anything
+        the bot has in ``state.watch_records`` but not here is an
+        orphan and should be cleaned up so ``/list`` and the series
+        index stay honest.
+        """
+        resp = await self._client().get("/api/records")
+        body = self._unwrap(resp, "list_record_ids")
+        ids = body.get("ids") or []
+        return [str(i) for i in ids if isinstance(i, str)]
+
     async def delete(self, record_id: str) -> dict[str, Any]:
         resp = await self._client().delete(f"/api/records/{record_id}")
         # 404 here is benign — the record was already gone.
