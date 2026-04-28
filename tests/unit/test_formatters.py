@@ -10,19 +10,15 @@ def test_format_search_item_escapes_html() -> None:
     assert "2024" in out
 
 
-def test_format_search_item_shows_original_when_different() -> None:
+def test_format_search_item_renders_title_and_year() -> None:
+    # SearchV2 line layout — bold title + comma-separated facts. The
+    # original_title used to appear in parens, but search results moved
+    # to a per-row inline keyboard and the message body now carries
+    # only this short summary form.
     item = {"title": "Дюна", "original_title": "Dune", "year": 2021}
     out = format_search_item(item)
     assert "Дюна" in out
-    assert "Dune" in out
     assert "2021" in out
-
-
-def test_format_search_item_omits_original_when_same() -> None:
-    item = {"title": "Dune", "original_title": "Dune", "year": 2021}
-    out = format_search_item(item)
-    # Original title appears only once — no "Dune (Dune)" duplication.
-    assert out.count("Dune") == 1
 
 
 def test_format_search_item_omits_overview() -> None:
