@@ -13,6 +13,12 @@ from ..core.i18n import t
 # ever picked from the top of the list.
 _MAX_TORRENT_ROWS = 10
 
+# Per-kind size cap for non-admin users. Prevents an ordinary user from
+# accidentally claiming the storage budget with a 200 GB Remux when a
+# 6 GB BDRip would do. Admins see every release regardless.
+_USER_SIZE_LIMIT_SERIES = 75 * 1024**3
+_USER_SIZE_LIMIT_OTHER = 15 * 1024**3
+
 
 def search_results_keyboard(items: list[dict[str, object]], query_id: str) -> InlineKeyboardMarkup:
     """One button per search hit in the SearchV2 format:
@@ -85,6 +91,13 @@ _RES_K_RE = re.compile(r"\b([248])\s*[Kk]\b")
 _K_TO_P = {"4": "2160p", "8": "4320p"}
 
 
+def _size_bytes(r: dict[str, object]) -> int:
+    s = r.get("size_bytes")
+    # Missing / unparseable size → treat as «unknown, let it through»
+    # so the user can still see odd-shaped rows from rutracker.
+    return s if isinstance(s, int) and s > 0 else 0
+
+
 def _resolution_label(r: dict[str, object]) -> str:
     quality = str(r.get("quality") or "")
     m = _RES_NP_RE.fullmatch(quality)
@@ -101,7 +114,11 @@ def _resolution_label(r: dict[str, object]) -> str:
 
 
 def torrent_list_keyboard(
-    results: list[dict[str, object]], *, imdb_id: str = ""
+    results: list[dict[str, object]],
+    *,
+    imdb_id: str = "",
+    is_series: bool = False,
+    is_admin: bool = True,
 ) -> InlineKeyboardMarkup:
     """Top releases sorted by seeders, capped at 10 rows.
 
@@ -109,8 +126,17 @@ def torrent_list_keyboard(
     descending, drop rows without a topic id, and render at most
     ``_MAX_TORRENT_ROWS`` buttons. No pin/expand logic — the per-row
     label carries enough context for the user to choose at a glance.
+
+    Non-admins are capped on per-release size: 75 GB for series, 15 GB
+    for everything else. Admins see every release. The cap silently
+    drops oversized rows rather than rendering them with a disabled
+    state — the picker is supposed to fit the user's library budget,
+    not surface what they can't have.
     """
     valid = [r for r in results if isinstance(r.get("topic_id"), int)]
+    if not is_admin:
+        limit = _USER_SIZE_LIMIT_SERIES if is_series else _USER_SIZE_LIMIT_OTHER
+        valid = [r for r in valid if _size_bytes(r) <= limit]
 
     def _seeders(r: dict[str, object]) -> int:
         s = r.get("seeders")

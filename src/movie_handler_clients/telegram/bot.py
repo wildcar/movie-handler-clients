@@ -8,7 +8,7 @@ from html import escape as _esc
 
 import structlog
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, BotCommandScopeChat
 
 from ..core.config import Settings, get_settings
 from ..core.i18n import t
@@ -26,6 +26,7 @@ from ..core.torrent_client import RutrackerTorrentMCPClient
 from ..core.traffic_log import TrafficLog
 from ..core.trailer_client import MovieTrailerMCPClient
 from ..core.yt_dlp_client import YtDlpMCPClient
+from .handlers import admin as admin_handler
 from .handlers import details as details_handler
 from .handlers import list as list_handler
 from .handlers import rutracker_url as rutracker_url_handler
@@ -273,6 +274,74 @@ async def _register_and_notify(
         status="sent",
     )
 
+    # Fan-out to admins who toggled `notify_downloads` on. The downloader
+    # himself is not double-notified — he already got the watch link
+    # message above.
+    await _notify_admins_of_download(bot, state_db, entry, saved)
+
+
+async def _notify_admins_of_download(
+    bot: Bot,
+    state_db: StateDb,
+    entry: DownloadWithUser,
+    watch_records: list,  # type: ignore[type-arg]
+) -> None:
+    if not watch_records:
+        return
+    notifying = state_db.list_notifying_admins()
+    if not notifying:
+        return
+
+    dl = entry.download
+    user_label = (
+        (entry.identity.meta or {}).get("first_name")
+        if isinstance(entry.identity.meta, dict)
+        else None
+    )
+    user_label = user_label or entry.identity.external_id
+    first = watch_records[0]
+    if dl.kind == "series" and len(watch_records) > 1:
+        # Series → link to the series index page on media-watch-web.
+        from urllib.parse import urlparse
+
+        parsed = urlparse(first.watch_url)
+        base = f"{parsed.scheme}://{parsed.netloc}" if parsed.scheme and parsed.netloc else ""
+        admin_msg = t(
+            "admin.user_downloaded_series",
+            user=_esc(str(user_label)),
+            title=_esc(dl.title or "—"),
+            url=f"{base}/series/{dl.media_id}",
+        )
+    else:
+        title = dl.title or ""
+        if title:
+            admin_msg = t(
+                "admin.user_downloaded_movie",
+                user=_esc(str(user_label)),
+                title=_esc(title),
+                url=first.watch_url,
+            )
+        else:
+            admin_msg = t(
+                "admin.user_downloaded_noname",
+                user=_esc(str(user_label)),
+                url=first.watch_url,
+            )
+
+    for admin_user, admin_identity in notifying:
+        # Skip the case where the admin *is* the downloader — they already
+        # got the watch link in the regular completion message.
+        if admin_user.id == dl.user_id:
+            continue
+        chat = admin_identity.chat_id or admin_identity.external_id
+        try:
+            chat_id = int(chat) if chat is not None else None
+        except ValueError:
+            chat_id = None
+        if chat_id is None:
+            continue
+        await _safe_send(bot, chat_id, admin_msg)
+
 
 def _format_completion_message(dl: Download, watch_records: list) -> str:  # type: ignore[type-arg]
     if not watch_records:
@@ -439,6 +508,7 @@ async def _run(settings: Settings) -> None:
         dp.include_router(status_handler.router)
         dp.include_router(list_handler.router)
         dp.include_router(whoami_handler.router)
+        dp.include_router(admin_handler.router)
         # URL routers come *before* the search router — search matches
         # anything not starting with `/`, so a pasted URL would land there
         # as free-text. rutracker first because its filter is the
@@ -449,13 +519,28 @@ async def _run(settings: Settings) -> None:
         dp.include_router(search_handler.router)
         dp.include_router(details_handler.router)
 
-        await bot.set_my_commands(
-            [
-                BotCommand(command="start", description="Что я умею"),
-                BotCommand(command="status", description="Прогресс закачек"),
-                BotCommand(command="list", description="Медиатека"),
-            ]
-        )
+        base_commands = [
+            BotCommand(command="start", description="Что я умею"),
+            BotCommand(command="status", description="Прогресс закачек"),
+            BotCommand(command="list", description="Медиатека"),
+        ]
+        admin_commands = [
+            *base_commands,
+            BotCommand(command="notify_toggle", description="Уведомления о закачках"),
+            BotCommand(command="global_list", description="Все закачки пользователей"),
+        ]
+        await bot.set_my_commands(base_commands)
+        # Per-admin scoped menu — Telegram surfaces these only in the
+        # admin's private chat with the bot. `BotCommandScopeChat`
+        # accepts chat_id which equals user_id for private DMs.
+        for admin_id in admin_user_ids:
+            try:
+                await bot.set_my_commands(
+                    admin_commands,
+                    scope=BotCommandScopeChat(chat_id=admin_id),
+                )
+            except Exception as exc:
+                log.warning("admin.menu_failed", admin_id=admin_id, error=str(exc))
 
         log.info("bot.starting")
         if rtorrent is not None or yt_dlp is not None:

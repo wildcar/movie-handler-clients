@@ -119,6 +119,17 @@ RU: Final[dict[str, str]] = {
     "ydl.playlist_truncated_hint": "(показаны первые {limit} из {total})",
     "ydl.playlist_entry": '{n}. <a href="{url}">{title}</a> ({duration})',
     "ydl.duration_unknown": "—",
+    "admin.not_admin": "Команда доступна только администраторам.",
+    "admin.notify_on": "🔔 Уведомления о закачках пользователей включены.",
+    "admin.notify_off": "🔕 Уведомления о закачках пользователей выключены.",
+    "admin.user_downloaded_movie": ('📥 <b>{user}</b> скачал: <a href="{url}">{title}</a>'),
+    "admin.user_downloaded_series": ("📥 <b>{user}</b> скачал серии (<b>{title}</b>): {url}"),
+    "admin.user_downloaded_noname": ('📥 <b>{user}</b> скачал: <a href="{url}">…</a>'),
+    "admin.global_list_header": "🗂 Все закачки пользователей:",
+    "admin.global_list_empty": "Ни одной зарегистрированной закачки.",
+    "admin.global_list_user_header": "👤 <b>{name}</b>",
+    "admin.global_list_movie_line": '  • <a href="{url}">{title}</a>',
+    "admin.global_list_series_line": '  • <a href="{url}">{title}</a> ({n} серий)',
 }
 
 

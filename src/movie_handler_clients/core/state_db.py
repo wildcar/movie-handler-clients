@@ -46,6 +46,11 @@ class User:
     id: int
     display_name: str
     is_admin: bool
+    notify_downloads: bool
+    """Admin opt-in: when true, the bot DMs this admin every time another
+    user's download finishes registering. Toggled via /notify_toggle.
+    Non-admins always have this False — the toggle command refuses for
+    non-admins."""
     created_at: str
     updated_at: str
 
@@ -242,6 +247,18 @@ class StateDb:
         with self._tx() as cur:
             cur.executescript(ddl)
 
+        # Idempotent post-DDL migrations — ADD COLUMN can't go in the
+        # CREATE TABLE script (that's only for fresh DBs) and the
+        # schema_version reset only touches downloads/watch_records/
+        # notifications, never users. Each entry here is a single
+        # column with a safe default so existing rows backfill cleanly.
+        with self._tx() as cur:
+            existing = {row["name"] for row in cur.execute("PRAGMA table_info(users)").fetchall()}
+            if "notify_downloads" not in existing:
+                cur.execute(
+                    "ALTER TABLE users ADD COLUMN notify_downloads INTEGER NOT NULL DEFAULT 0"
+                )
+
     # ------------------------------------------------------------------ users
 
     def upsert_telegram_user(
@@ -329,6 +346,68 @@ class StateDb:
             cur.execute("SELECT * FROM users WHERE id=?", (user_id,))
             row = cur.fetchone()
         return _row_to_user(row) if row else None
+
+    def set_notify_downloads(self, user_id: int, enabled: bool) -> None:
+        """Toggle the per-admin «notify me on every user's completed
+        download» preference. Caller is responsible for gating this on
+        ``user.is_admin`` — the storage layer doesn't enforce it."""
+        with self._tx() as cur:
+            cur.execute(
+                "UPDATE users SET notify_downloads=?, updated_at=? WHERE id=?",
+                (1 if enabled else 0, _now_iso(), user_id),
+            )
+
+    def list_notifying_admins(self) -> list[tuple[User, Identity]]:
+        """Admins who opted into download notifications, paired with
+        their Telegram identity (so the bot knows where to send the
+        message). Non-admins with the flag set are filtered out
+        defensively — should never happen, but cheap to enforce."""
+        with self._tx() as cur:
+            cur.execute(
+                """
+                SELECT u.*, i.user_id AS i_user_id, i.platform, i.external_id,
+                       i.chat_id, i.meta
+                  FROM users u
+                  JOIN user_identities i ON i.user_id = u.id
+                                         AND i.platform = 'telegram'
+                 WHERE u.is_admin = 1 AND u.notify_downloads = 1
+                """
+            )
+            rows = cur.fetchall()
+        return [(_row_to_user(r), _row_to_identity(r)) for r in rows]
+
+    def list_all_registered_with_user(self) -> list[tuple[Download, User]]:
+        """Every successfully-registered download joined to its owning
+        user. Backs the admin /global_list command. Sort order: user id
+        ascending, then most-recent download first within the user."""
+        with self._tx() as cur:
+            cur.execute(
+                """
+                SELECT d.*, u.id AS u_id, u.display_name AS u_display_name,
+                       u.is_admin AS u_is_admin,
+                       u.notify_downloads AS u_notify_downloads,
+                       u.created_at AS u_created_at, u.updated_at AS u_updated_at
+                  FROM downloads d
+                  JOIN users u ON u.id = d.user_id
+                 WHERE d.state = 'registered'
+                 ORDER BY u.id ASC,
+                          COALESCE(d.completed_at, d.updated_at) DESC,
+                          d.id DESC
+                """
+            )
+            rows = cur.fetchall()
+        out: list[tuple[Download, User]] = []
+        for r in rows:
+            user = User(
+                id=int(r["u_id"]),
+                display_name=str(r["u_display_name"] or ""),
+                is_admin=bool(r["u_is_admin"]),
+                notify_downloads=bool(r["u_notify_downloads"]),
+                created_at=str(r["u_created_at"]),
+                updated_at=str(r["u_updated_at"]),
+            )
+            out.append((_row_to_download(r), user))
+        return out
 
     def get_telegram_identity(self, tg_user_id: int) -> Identity | None:
         with self._tx() as cur:
@@ -660,10 +739,16 @@ def _normalise_info_hash(info_hash: str) -> str:
 
 def _row_to_user(row: sqlite3.Row | None) -> User:
     assert row is not None
+    keys = row.keys()
     return User(
         id=int(row["id"]),
         display_name=str(row["display_name"] or ""),
         is_admin=bool(row["is_admin"]),
+        # `notify_downloads` was added by an idempotent ALTER post-launch;
+        # rows on that ALTER's path get 0 by default, but selects from
+        # joined tables (e.g. list_pending) don't carry the column —
+        # treat absent as False.
+        notify_downloads=bool(row["notify_downloads"]) if "notify_downloads" in keys else False,
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),
     )

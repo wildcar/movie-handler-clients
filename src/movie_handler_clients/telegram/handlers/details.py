@@ -202,6 +202,7 @@ async def on_download(
     torrent: RutrackerTorrentMCPClient | None,
     title_cache: TitleCache,
     torrent_cache: TorrentCache,
+    admin_user_ids: set[int],
 ) -> None:
     imdb_id = (cq.data or "")[3:]
 
@@ -228,7 +229,15 @@ async def on_download(
         )
         return
 
-    await _run_torrent_search(cq, torrent, torrent_cache, title_cache, imdb_id, season=None)
+    await _run_torrent_search(
+        cq,
+        torrent,
+        torrent_cache,
+        title_cache,
+        imdb_id,
+        season=None,
+        admin_user_ids=admin_user_ids,
+    )
 
 
 @router.callback_query(F.data.startswith("dls:"))
@@ -237,6 +246,7 @@ async def on_download_season(
     torrent: RutrackerTorrentMCPClient | None,
     title_cache: TitleCache,
     torrent_cache: TorrentCache,
+    admin_user_ids: set[int],
 ) -> None:
     # Callback shape: "dls:<imdb_id>:<season>".
     parts = (cq.data or "").split(":", 2)
@@ -256,7 +266,15 @@ async def on_download_season(
         await cq.answer(t("download.reopen_card"), show_alert=True)
         return
 
-    await _run_torrent_search(cq, torrent, torrent_cache, title_cache, imdb_id, season=season)
+    await _run_torrent_search(
+        cq,
+        torrent,
+        torrent_cache,
+        title_cache,
+        imdb_id,
+        season=season,
+        admin_user_ids=admin_user_ids,
+    )
 
 
 @router.callback_query(F.data.startswith("dla:"))
@@ -265,6 +283,7 @@ async def on_download_all_seasons(
     torrent: RutrackerTorrentMCPClient | None,
     title_cache: TitleCache,
     torrent_cache: TorrentCache,
+    admin_user_ids: set[int],
 ) -> None:
     imdb_id = (cq.data or "")[4:]
     if torrent is None or cq.message is None:
@@ -273,7 +292,15 @@ async def on_download_all_seasons(
     if title_cache.get(imdb_id) is None:
         await cq.answer(t("download.reopen_card"), show_alert=True)
         return
-    await _run_torrent_search(cq, torrent, torrent_cache, title_cache, imdb_id, season=None)
+    await _run_torrent_search(
+        cq,
+        torrent,
+        torrent_cache,
+        title_cache,
+        imdb_id,
+        season=None,
+        admin_user_ids=admin_user_ids,
+    )
 
 
 async def _run_torrent_search(
@@ -284,6 +311,7 @@ async def _run_torrent_search(
     imdb_id: str,
     *,
     season: int | None,
+    admin_user_ids: set[int],
 ) -> None:
     """Execute a rutracker search and present the result list. Shared by
     the movie download path and both series-with-season paths.
@@ -382,10 +410,16 @@ async def _run_torrent_search(
     from html import escape as _esc
 
     text = t("download.list_header", query=_esc(display_label), n=len(results))
+    is_admin = tg_user_id is not None and tg_user_id in admin_user_ids
     await cq.message.answer(
         text,
         parse_mode="HTML",
-        reply_markup=torrent_list_keyboard(results, imdb_id=imdb_id),
+        reply_markup=torrent_list_keyboard(
+            results,
+            imdb_id=imdb_id,
+            is_series=is_series,
+            is_admin=is_admin,
+        ),
         disable_web_page_preview=True,
     )
 
