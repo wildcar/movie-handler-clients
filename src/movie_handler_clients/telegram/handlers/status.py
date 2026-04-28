@@ -180,7 +180,6 @@ def _format_ytdlp_row(dl: Download, task: dict[str, Any]) -> str:
     return f"{icon} <b>{_esc(name)}</b>\n   {bar} {round(pct, 1)}%  {size_str}{eta}"
 
 
-
 def _progress_bar(pct: float, width: int = 10) -> str:
     filled = round(pct / 100 * width)
     return "█" * filled + "░" * (width - filled)
