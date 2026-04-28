@@ -1,14 +1,14 @@
 """/list — the user's media library.
 
-One row per title:
-- movies / cartoons / single-file yt-dlp downloads → 🎬/🎨 + watch URL
-- series → 📺 + link to the series index page on media-watch-web
-  («Friends (1994) — 23 серии»). The index page lists every episode
-  with its watch link, so the chat stays compact even for shows with
-  many seasons.
+One bulleted row per title:
+- movies / cartoons / single-file yt-dlp downloads → `• <title>`
+  linking at the watch URL.
+- series → `• <title> — N серий`, link points at the series index
+  page on media-watch-web; per-episode links live there so the chat
+  stays compact for big shows.
 
-Each entry is on its own line with a blank separator so the list is
-scannable at a glance.
+Single-spaced rows with a uniform `•` bullet — keeps the list easy to
+scan even when 20+ items pile up.
 """
 
 from __future__ import annotations
@@ -58,9 +58,8 @@ async def on_list(message: Message, state_db: StateDb) -> None:
         await message.answer(t("list.empty"))
         return
 
-    # Blank line between rows so adjacent titles don't blur together.
     await message.answer(
-        t("list.header") + "\n\n" + "\n\n".join(rows),
+        t("list.header") + "\n" + "\n".join(rows),
         parse_mode="HTML",
         disable_web_page_preview=True,
     )
