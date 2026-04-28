@@ -180,32 +180,6 @@ def _format_ytdlp_row(dl: Download, task: dict[str, Any]) -> str:
     return f"{icon} <b>{_esc(name)}</b>\n   {bar} {round(pct, 1)}%  {size_str}{eta}"
 
 
-def _format_row(dl: dict[str, Any]) -> str:
-    name = str(dl.get("name") or "?")
-    size = int(dl.get("size_bytes") or 0)
-    done = int(dl.get("completed_bytes") or 0)
-    rate = int(dl.get("down_rate") or 0)
-    state = str(dl.get("state") or "")
-
-    pct = round(done / size * 100, 1) if size > 0 else 0.0
-    bar = _progress_bar(pct)
-
-    if state == "complete":
-        icon = "✅"
-        eta = ""
-    elif state == "active":
-        icon = "↓"
-        eta = "  " + _format_eta(size, done, rate) if size > 0 else ""
-    elif state == "paused":
-        icon = "⏸"
-        eta = ""
-    else:
-        icon = "⏹"
-        eta = ""
-
-    size_str = _human_gb(size)
-    return f"{icon} <b>{_esc(name)}</b>\n   {bar} {pct}%  {size_str}{eta}"
-
 
 def _progress_bar(pct: float, width: int = 10) -> str:
     filled = round(pct / 100 * width)

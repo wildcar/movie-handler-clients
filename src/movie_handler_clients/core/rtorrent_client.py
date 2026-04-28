@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 from .mcp_client import BaseMCPClient
 
-MediaKind = Literal["movie", "series"]
+MediaKind = Literal["movie", "series", "cartoon"]
 
 
 class RtorrentMCPClient(BaseMCPClient):

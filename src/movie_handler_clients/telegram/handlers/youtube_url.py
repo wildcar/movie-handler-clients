@@ -175,7 +175,7 @@ async def on_confirm(
     # Hide the «Скачать» button so the user can't double-tap during the
     # round-trip.
     try:
-        await cq.message.edit_reply_markup(reply_markup=None)
+        await cq.message.edit_reply_markup(reply_markup=None)  # type: ignore[union-attr]
     except Exception:
         pass
 

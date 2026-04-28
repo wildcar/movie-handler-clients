@@ -76,12 +76,17 @@ async def on_details(
     # any search-cache hint — search_movie can't produce «cartoon» since
     # it doesn't have the title's genre list.
     details_kind = details.get("kind")
+    kind_hint: Kind
     if details_kind == "cartoon":
         kind_hint = "cartoon"
     else:
-        kind_hint = _kind_from_search_cache(search_cache, query_id, imdb_id)
-        if kind_hint is None:
-            kind_hint = "series" if details_kind == "series" else "movie"
+        cached_kind = _kind_from_search_cache(search_cache, query_id, imdb_id)
+        if cached_kind is not None:
+            kind_hint = cached_kind
+        elif details_kind == "series":
+            kind_hint = "series"
+        else:
+            kind_hint = "movie"
     title_cache.put(
         imdb_id,
         str(details.get("title") or details.get("original_title") or ""),
@@ -507,7 +512,7 @@ async def on_torrent_confirm(
     # Hide the «Скачать» button so the user can't double-tap while the
     # rutracker round-trip is in flight.
     try:
-        await cq.message.edit_reply_markup(reply_markup=None)
+        await cq.message.edit_reply_markup(reply_markup=None)  # type: ignore[union-attr]
     except Exception:
         pass
 
