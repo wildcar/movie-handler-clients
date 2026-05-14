@@ -65,6 +65,10 @@ _PLAYLIST_RE = re.compile(r"[?&]list=[\w-]+", re.IGNORECASE)
 # upstream; this regex is purely belt-and-suspenders so a misordered
 # router registration doesn't double-process.
 _RUTRACKER_RE = re.compile(r"rutracker\.org/forum/viewtopic\.php\?", re.IGNORECASE)
+# Yandex.Video preview pages — yt-dlp recognises them but the
+# extractor is broken upstream (Unable to extract data_raw). Skip the
+# round-trip and send a useful hint right away.
+_YANDEX_PREVIEW_RE = re.compile(r"yandex\.[a-z]+/video/preview/", re.IGNORECASE)
 
 
 @router.message(F.text.regexp(_URL_RE))
@@ -80,6 +84,13 @@ async def on_url(
     url = m.group(0).rstrip(").,;")
     if _RUTRACKER_RE.search(url):
         return  # owned by rutracker_url.py
+    if _YANDEX_PREVIEW_RE.search(url):
+        # yt-dlp's YandexVideoPreview extractor is broken (Apr 2026);
+        # tailored message saves the user a fruitless probe + the
+        # generic «ссылка не распознана» which is misleading when we
+        # actually know the host.
+        await message.answer(t("ydl.yandex_preview_hint"))
+        return
 
     if yt_dlp is None:
         await message.answer(t("ydl.unsupported"))

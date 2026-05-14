@@ -104,7 +104,11 @@ RU: Final[dict[str, str]] = {
     "rt_url.candidate_button_no_year": "{title}",
     "rt_url.unlink_button": "Скачать без привязки",
     "ydl.fetching": "🔎 Смотрю видео…",
-    "ydl.unsupported": ("Ссылка не распознана как ссылка на трекер или видео."),
+    "ydl.unsupported": "Ссылка не распознана как ссылка на трекер или видео.",
+    "ydl.yandex_preview_hint": (
+        "Яндекс.Видео-превью не поддерживается. Откройте видео и пришлите "
+        "ссылку на оригинальный источник (YouTube / VK / RuTube / …)."
+    ),
     "ydl.preview": ("<b>{title}</b>\n{channel} · {duration}"),
     "ydl.preview_no_channel": "<b>{title}</b>\n{duration}",
     "ydl.confirm_button": "↓ Скачать",
