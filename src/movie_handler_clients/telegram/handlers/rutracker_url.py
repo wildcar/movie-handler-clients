@@ -106,11 +106,18 @@ async def on_rutracker_url(
         imdb = str(c.get("imdb_id") or "")
         if not imdb:
             continue
+        raw_kind = c.get("kind")
+        # Preserve cartoon → cartoon and series → series; anything else
+        # (None, unknown) falls back to movie. The previous logic
+        # downgraded cartoon to movie, which then defeated the per-kind
+        # routing on rtorrent-mcp and the media-watch episode-suffix
+        # detection.
+        cached_kind = raw_kind if raw_kind in ("movie", "series", "cartoon") else "movie"
         title_cache.put(
             imdb,
             str(c.get("title") or ""),
             int(c["year"]) if isinstance(c.get("year"), int) else None,
-            "series" if c.get("kind") == "series" else "movie",
+            cached_kind,  # type: ignore[arg-type]
         )
         movie_meta_cache.put(
             imdb,
