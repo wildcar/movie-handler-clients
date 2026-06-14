@@ -383,85 +383,67 @@ async def _run(settings: Settings) -> None:
         state_db = StateDb(path=settings.state_db_path)
         stack.callback(state_db.close)
 
+        # Every MCP client is self-healing: an unreachable server at startup
+        # is logged but never fatal — the client begins disconnected and a
+        # background supervisor (wired below, once the bot can notify admins)
+        # keeps retrying. So construction here can't fail on connectivity.
         mcp = await stack.enter_async_context(
             MovieMetadataMCPClient(
                 url=settings.movie_metadata_mcp_url,
                 auth_token=settings.mcp_auth_token,
                 traffic_log=traffic,
+                name="Поиск фильмов (metadata)",
             )
         )
         # Trailer MCP is optional — if it's down or not reachable, the bot
         # keeps running and the trailer button falls back to the stub.
-        trailer: MovieTrailerMCPClient | None = None
-        try:
-            trailer = await stack.enter_async_context(
-                MovieTrailerMCPClient(
-                    url=settings.movie_trailer_mcp_url,
-                    auth_token=settings.mcp_auth_token,
-                    traffic_log=traffic,
-                )
+        trailer = await stack.enter_async_context(
+            MovieTrailerMCPClient(
+                url=settings.movie_trailer_mcp_url,
+                auth_token=settings.mcp_auth_token,
+                traffic_log=traffic,
+                name="Трейлеры",
             )
-        except (Exception, BaseExceptionGroup) as exc:
-            log.warning(
-                "trailer_mcp.unavailable", url=settings.movie_trailer_mcp_url, error=str(exc)
-            )
+        )
 
         # Torrent MCP is also optional — same degradation story.
-        torrent: RutrackerTorrentMCPClient | None = None
-        try:
-            torrent = await stack.enter_async_context(
-                RutrackerTorrentMCPClient(
-                    url=settings.rutracker_torrent_mcp_url,
-                    auth_token=settings.mcp_auth_token,
-                    traffic_log=traffic,
-                )
-            )
-        except (Exception, BaseExceptionGroup) as exc:
-            log.warning(
-                "torrent_mcp.unavailable",
+        torrent = await stack.enter_async_context(
+            RutrackerTorrentMCPClient(
                 url=settings.rutracker_torrent_mcp_url,
-                error=str(exc),
+                auth_token=settings.mcp_auth_token,
+                traffic_log=traffic,
+                name="Поиск раздач (rutracker)",
             )
+        )
 
         # rtorrent MCP is opt-in: the URL defaults to None. When set, the
         # download flow pushes the .torrent straight to the media server;
-        # when unset (or unreachable), we fall back to sending the file
-        # to the user as a Telegram document.
+        # when unset, we fall back to sending the file to the user as a
+        # Telegram document. When set but currently unreachable, the client
+        # self-heals and the same fallback applies until it reconnects.
         rtorrent: RtorrentMCPClient | None = None
         if settings.rtorrent_mcp_url:
-            try:
-                rtorrent = await stack.enter_async_context(
-                    RtorrentMCPClient(
-                        url=settings.rtorrent_mcp_url,
-                        auth_token=settings.mcp_auth_token,
-                        traffic_log=traffic,
-                    )
-                )
-            except (Exception, BaseExceptionGroup) as exc:
-                log.warning(
-                    "rtorrent_mcp.unavailable",
+            rtorrent = await stack.enter_async_context(
+                RtorrentMCPClient(
                     url=settings.rtorrent_mcp_url,
-                    error=str(exc),
+                    auth_token=settings.mcp_auth_token,
+                    traffic_log=traffic,
+                    name="Сервер закачек (rtorrent)",
                 )
+            )
 
         # yt-dlp MCP — opt-in. When unset, pasted YouTube/Vimeo/Twitch
         # URLs land on «ссылка не распознана».
         yt_dlp: YtDlpMCPClient | None = None
         if settings.yt_dlp_mcp_url:
-            try:
-                yt_dlp = await stack.enter_async_context(
-                    YtDlpMCPClient(
-                        url=settings.yt_dlp_mcp_url,
-                        auth_token=settings.mcp_auth_token,
-                        traffic_log=traffic,
-                    )
-                )
-            except (Exception, BaseExceptionGroup) as exc:
-                log.warning(
-                    "yt_dlp_mcp.unavailable",
+            yt_dlp = await stack.enter_async_context(
+                YtDlpMCPClient(
                     url=settings.yt_dlp_mcp_url,
-                    error=str(exc),
+                    auth_token=settings.mcp_auth_token,
+                    traffic_log=traffic,
+                    name="Загрузчик видео (yt-dlp)",
                 )
+            )
 
         # media-watch-web is opt-in too: when both URL and token are set
         # we register completed downloads there and hand the user a
@@ -487,6 +469,21 @@ async def _run(settings: Settings) -> None:
         stack.push_async_callback(bot.session.close)
 
         admin_user_ids = settings.admin_user_ids()
+
+        # Self-healing wiring: now that the bot exists we can give every MCP
+        # client a notifier (pings admins when a server drops and when it
+        # recovers) and start its background reconnect supervisor. The
+        # supervisors are torn down by each client's __aexit__ on shutdown.
+        async def _notify_admins_mcp(event: str, name: str) -> None:
+            text = t("admin.mcp_down" if event == "down" else "admin.mcp_up", name=name)
+            for admin_id in admin_user_ids:
+                await _safe_send(bot, admin_id, text)
+
+        for client in (mcp, trailer, torrent, rtorrent, yt_dlp):
+            if client is None:
+                continue
+            client.set_notifier(_notify_admins_mcp)
+            client.start_supervisor()
 
         # aiogram injects any kwargs we pass to the Dispatcher constructor
         # into handlers that declare matching parameter names.

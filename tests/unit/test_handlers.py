@@ -140,3 +140,81 @@ async def test_base_mcp_client_reconnects_on_session_terminated() -> None:
     payload = await client.call_tool("x", {"a": 1}, tg_user_id=None)
     assert payload == {"ok": True}
     assert reopen_called == [1]
+
+
+async def test_client_startup_is_nonfatal_when_server_down() -> None:
+    """An unreachable server at startup must not raise — the client begins
+    disconnected and recovers later."""
+    import types
+
+    from movie_handler_clients.core import mcp_client as mc
+
+    client = mc.BaseMCPClient(
+        url="http://127.0.0.1:0/mcp", auth_token="t", traffic_log=AsyncMock(), name="X"
+    )
+
+    async def boom() -> None:
+        raise ConnectionError("connection refused")
+
+    client._open_session = types.MethodType(lambda self: boom(), client)  # type: ignore[assignment]
+
+    async with client:  # must not raise
+        assert client.connected is False
+
+
+async def test_call_tool_raises_mcp_error_while_disconnected() -> None:
+    """A disconnected client surfaces a transport error callers can degrade
+    on, not a bare RuntimeError or crash."""
+    import types
+
+    from movie_handler_clients.core import mcp_client as mc
+
+    client = mc.BaseMCPClient(url="u", auth_token="t", traffic_log=AsyncMock(), name="X")
+
+    async def boom() -> None:
+        raise ConnectionError("connection refused")
+
+    client._open_session = types.MethodType(lambda self: boom(), client)  # type: ignore[assignment]
+
+    with pytest.raises(mc.MCPClientError):
+        await client.call_tool("x", {})
+
+
+async def test_supervisor_heals_and_notifies_down_then_up() -> None:
+    """While down the supervisor retries and announces 'down' once; on
+    recovery it announces 'up' once — in that order."""
+    import asyncio
+    import types
+
+    from movie_handler_clients.core import mcp_client as mc
+
+    events: list[tuple[str, str]] = []
+    up = asyncio.Event()
+
+    async def notifier(event: str, name: str) -> None:
+        events.append((event, name))
+        if event == "up":
+            up.set()
+
+    client = mc.BaseMCPClient(url="u", auth_token="t", traffic_log=AsyncMock(), name="X")
+    client._RECONNECT_DELAY = 0  # type: ignore[assignment]
+    client.set_notifier(notifier)
+
+    attempts = {"n": 0}
+
+    async def open_session() -> None:
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise ConnectionError("not yet")
+        client._session = AsyncMock()
+
+    client._open_session = types.MethodType(lambda self: open_session(), client)  # type: ignore[assignment]
+
+    assert client._session is None
+    client.start_supervisor()
+    await asyncio.wait_for(up.wait(), timeout=2)
+    await client._stop_supervisor()
+
+    assert ("down", "X") in events
+    assert ("up", "X") in events
+    assert events.index(("down", "X")) < events.index(("up", "X"))

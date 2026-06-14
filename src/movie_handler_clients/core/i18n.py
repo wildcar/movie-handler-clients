@@ -134,6 +134,10 @@ RU: Final[dict[str, str]] = {
     "admin.global_list_user_header": "👤 <b>{name}</b>",
     "admin.global_list_movie_line": '  • <a href="{url}">{title}</a>',
     "admin.global_list_series_line": '  • <a href="{url}">{title}</a> ({n} серий)',
+    "admin.mcp_down": (
+        "⚠️ Не удалось подключиться к сервису «{name}». Пробую переподключиться…"
+    ),
+    "admin.mcp_up": "✅ Подключение к сервису «{name}» восстановлено.",
 }
 
 

@@ -5,6 +5,48 @@ starts. Cross-repo context lives in the workspace root's `history.md`.
 
 ---
 
+## 2026-06-14
+
+### Self-healing MCP clients + admin notifications on connect loss/recovery
+
+**Why.** A user hit `/status` → «Сервер закачек не настроен». Root cause:
+the media host (`wildcar.ru:8768/8769`) was unreachable at the exact moment
+the bot last restarted (Jun 14 16:32; journal showed `rtorrent_mcp.unavailable`
++ `yt_dlp_mcp.unavailable`). MCP clients connected once at startup with no
+reconnect — on failure they stayed `None` for the whole process lifetime, so
+downloads silently broke until a manual restart. Any transient network blip to
+the media host had the same effect.
+
+**What.**
+- `core/mcp_client.py`: `BaseMCPClient` is now self-healing.
+  - `__aenter__` no longer raises on a failed connect — the client begins
+    life disconnected and logs `mcp.connect_failed`.
+  - New background **supervisor** (`start_supervisor`/`_supervise`): while
+    disconnected it retries every `_RECONNECT_DELAY` (15 s); announces `down`
+    once on the way down and `up` once on recovery via an optional notifier.
+  - `call_tool` reconnects on demand when disconnected (`_ensure_session`,
+    lock-guarded) and raises `MCPClientError` if still down; on a
+    disconnect-looking error (`_is_disconnect`) it drops the session so the
+    supervisor heals + notifies. Existing stale-session one-shot retry kept.
+  - New `name`, `connected` props and `set_notifier`.
+- `telegram/bot.py`: clients are always constructed when their URL is set
+  (no more `None`-on-failure). After the bot exists, a notifier that pings
+  every admin (`admin.mcp_down` / `admin.mcp_up`) is wired onto every MCP
+  client and each supervisor is started. Dead `try/except …unavailable`
+  blocks removed.
+- `core/i18n.py`: `admin.mcp_down` («Не удалось подключиться … Пробую
+  переподключиться…»), `admin.mcp_up` («Подключение … восстановлено»).
+- Tests: startup-is-nonfatal, call_tool-raises-while-disconnected,
+  supervisor-heals-and-notifies-down-then-up.
+
+**Note on the `None` contract.** `rtorrent`/`yt_dlp` are still `None` when
+their URL is unset (feature genuinely disabled → `/status` "not_configured").
+"Configured but currently down" is now a live-but-disconnected client whose
+calls raise `MCPClientError`; all call sites already degrade gracefully
+(rtorrent → send .torrent to user, trailer → error msg, etc.).
+
+---
+
 ## 2026-04-27
 
 ### Pasted-YouTube-URL flow + generic yt-dlp downloads
