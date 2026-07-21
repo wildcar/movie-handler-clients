@@ -39,7 +39,8 @@ runs a deterministic algorithmic workflow — it does not wrap an LLM agent.
 - OS / shell: Ubuntu 24.04 / `bash`, user `keeper` (passwordless sudo).
 - Commit identity: `wildcar <wildcar@mail.ru>`.
 - Remote: `github.com/wildcar/movie-handler-clients`.
-- Deploys to the **bot host** (`homesrv`) as a systemd unit (`movie-handler-telegram`).
+- Deploys to the **bot host** (`r1117636`, the current/dev server) as a systemd unit
+  (`movie-handler-telegram`).
 - Repo-local env in `AGENTS/ENV.md`; cross-repo hosts in `../AGENTS/ENV.md`.
 
 ## Startup Checklist

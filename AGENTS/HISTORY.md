@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-07-21 · Correct Telegram bot deployment host
+- What: Corrected deploy docs: the bot and its local MCPs run on `r1117636`, not `homesrv`.
+- Why: Maintainer correction confirmed by the active local systemd units and `/opt/movie-handler-clients` checkout.
+- Files: `AGENTS.md`, `AGENTS/ENV.md`, `AGENTS/HISTORY.md`.
+- Next: Keep media-service operations such as yt-dlp cookies on `homesrv`.
+
 ## 2026-07-21 · Report stalled yt-dlp download confirmation
 - What: Bounded the `start_download` callback at 45 seconds and show a visible timeout message when the MCP call stalls.
 - Why: Telegram acknowledged the button and hid it, but a hung production probe left the handler waiting forever with no follow-up.

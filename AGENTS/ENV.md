@@ -2,13 +2,15 @@
 
 Repo-local env for `movie-handler-clients`. Cross-repo host facts, deploy
 recipes, and credential layout live in **`../AGENTS/ENV.md`** — read that for
-host details (dev box, bot host `homesrv`, media host `v.wildcar.ru`), tool
+host details (bot/current server `r1117636`, media host `homesrv` / public
+`v.wildcar.ru`), tool
 versions, and the prod `git pull --ff-only` workflow. This file is only the
 repo-specific bits.
 
 ## Deploy target
 
-Runs on the **bot host** (`homesrv`) as the `movie-handler-telegram` systemd unit
+Runs on the **bot host** (`r1117636`, this current/dev server) as the
+`movie-handler-telegram` systemd unit
 (user `movie`, `/opt/movie-handler-clients`). Long-polling — no inbound port.
 Reaches the bot-host MCPs over `127.0.0.1` and the media-host MCPs / media-watch
 over `wildcar.ru`. Systemd units + `update.sh` are in `deploy/`.
