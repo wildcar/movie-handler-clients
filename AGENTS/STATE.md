@@ -16,7 +16,8 @@ Telegram today; web (FastAPI+WS) and VK later.
 - Commands: `/start` `/status` `/list` (user menu); `/notify_toggle` `/global_list`
   (admin); `/whoami` (hidden). `state.sqlite` schema at `user_version=2`.
 - Pasted-video errors distinguish unsupported URLs from recognised URLs rejected by
-  YouTube anti-bot protection or another upstream extraction failure.
+  YouTube anti-bot protection or another upstream extraction failure; download
+  confirmation reports a visible error if `start_download` exceeds 45 seconds.
 - Harness migrated to the `agent-template` layout.
 
 ## Next

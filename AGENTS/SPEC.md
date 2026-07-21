@@ -59,6 +59,8 @@ Three ways to start a download; all converge on the same confirm + poller path.
   double-fire. `?list=` → `list_playlist` (plain-text list). Live streams refused.
   Extractor/upstream failures are reported separately from genuinely unsupported
   URLs; YouTube anti-bot responses explicitly say that the link itself was recognised.
+  Confirm waits at most 45 seconds for `start_download`, then reports a visible
+  timeout instead of leaving the callback silently pending.
 
 (a) and (b) join the `tdl:<topic_id>:<imdb_id>` confirm callback → rutracker
 `.torrent` fetch → `rtorrent.add_torrent` (with `kind` → destination dir). (c)

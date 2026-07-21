@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+
 from movie_handler_clients.telegram.handlers import youtube_url as youtube_url_mod
-from movie_handler_clients.telegram.ydl_cache import YtDlpCache
+from movie_handler_clients.telegram.ydl_cache import YtDlpCache, YtDlpEntry
 
 
 async def test_youtube_antibot_error_does_not_call_valid_url_unsupported() -> None:
@@ -50,3 +53,43 @@ def test_probe_error_key_keeps_unsupported_distinct() -> None:
         )
         == "ydl.probe_failed"
     )
+
+
+async def test_confirm_reports_start_download_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    cache = YtDlpCache()
+    cache.put("token", YtDlpEntry(url="https://youtu.be/abc", title="Video"))
+    message = SimpleNamespace(
+        edit_reply_markup=AsyncMock(),
+        answer=AsyncMock(),
+        chat=SimpleNamespace(id=100),
+    )
+    cq = SimpleNamespace(
+        data="ydl:token",
+        message=message,
+        from_user=SimpleNamespace(
+            id=42,
+            first_name="Test",
+            last_name="User",
+            username="test_user",
+        ),
+        answer=AsyncMock(),
+    )
+    yt_dlp = AsyncMock()
+
+    async def hang(*args: object, **kwargs: object) -> None:
+        await asyncio.Event().wait()
+
+    yt_dlp.start_download.side_effect = hang
+    monkeypatch.setattr(youtube_url_mod, "_START_TIMEOUT_SECONDS", 0.01)
+
+    await youtube_url_mod.on_confirm(  # type: ignore[arg-type]
+        cq,
+        yt_dlp=yt_dlp,
+        ydl_cache=cache,
+        state_db=AsyncMock(),
+        admin_user_ids=set(),
+    )
+
+    message.answer.assert_awaited_once()
+    (body,), _ = message.answer.call_args
+    assert "не ответил" in body

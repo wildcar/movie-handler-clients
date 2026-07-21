@@ -121,6 +121,9 @@ RU: Final[dict[str, str]] = {
     "ydl.preview_no_channel": "<b>{title}</b>\n{duration}",
     "ydl.confirm_button": "↓ Скачать",
     "ydl.start_failed": "Не удалось поставить на скачивание: {detail}",
+    "ydl.start_timeout": (
+        "Сервер загрузок не ответил вовремя. Попробуйте ещё раз позже."
+    ),
     "ydl.queued": ("↓ Поставил на скачивание: <b>{title}</b>\n/status — посмотреть прогресс"),
     "ydl.live_unsupported": "Прямые трансляции не поддерживаются.",
     "ydl.playlist_header": (

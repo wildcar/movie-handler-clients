@@ -21,6 +21,7 @@ to the first matching router.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import re
 import secrets
@@ -44,6 +45,8 @@ from ..ydl_cache import YtDlpCache, YtDlpEntry
 
 router = Router(name="youtube_url")
 log = structlog.get_logger(__name__)
+
+_START_TIMEOUT_SECONDS = 45.0
 
 
 # Any http(s) URL kicks the handler — yt-dlp's extractor list is the
@@ -191,7 +194,14 @@ async def on_confirm(
         pass
 
     try:
-        payload = await yt_dlp.start_download(entry.url, tg_user_id=tg_user_id)
+        payload = await asyncio.wait_for(
+            yt_dlp.start_download(entry.url, tg_user_id=tg_user_id),
+            timeout=_START_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        log.warning("ydl.start_timeout", url=entry.url)
+        await cq.message.answer(t("ydl.start_timeout"))
+        return
     except MCPClientError as exc:
         log.warning("ydl.start_failed", url=entry.url, error=str(exc))
         await cq.message.answer(t("ydl.start_failed", detail=str(exc)))
