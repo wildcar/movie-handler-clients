@@ -15,6 +15,8 @@ Telegram today; web (FastAPI+WS) and VK later.
   self-healing MCP clients with admin down/up notifications.
 - Commands: `/start` `/status` `/list` (user menu); `/notify_toggle` `/global_list`
   (admin); `/whoami` (hidden). `state.sqlite` schema at `user_version=2`.
+- Pasted-video errors distinguish unsupported URLs from recognised URLs rejected by
+  YouTube anti-bot protection or another upstream extraction failure.
 - Harness migrated to the `agent-template` layout.
 
 ## Next

@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-07-21 · Distinguish YouTube anti-bot failures from invalid links
+- What: Pasted-video probe errors now report recognised-but-rejected YouTube URLs separately from unsupported URLs; added regression coverage for the reported `youtu.be` link.
+- Why: YouTube's `Sign in to confirm you’re not a bot` response was misleadingly shown as «ссылка не распознана».
+- Files: `AGENTS/SPEC.md`, `AGENTS/STATE.md`, `core/i18n.py`, `handlers/youtube_url.py`, `tests/unit/test_youtube_url.py`.
+- Next: Rotate production YouTube cookies or add a PO-token provider if anti-bot rejection persists.
+
 ## 2026-06-23 · Migrate harness to agent-template layout
 - What: Added `AGENTS.md`, `CLAUDE.md` pointer, `AGENTS/{SPEC,STATE,HISTORY,MEMORY,ENV}.md`, `docs/adr/TEMPLATE.md`; folded `history.md`/`env.md` in.
 - Why: Adopt the standard `wildcar/agent-template` harness across the workspace.

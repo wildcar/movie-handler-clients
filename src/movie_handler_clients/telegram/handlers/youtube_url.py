@@ -108,11 +108,11 @@ async def on_url(
         payload = await yt_dlp.probe(url, tg_user_id=tg_user_id)
     except MCPClientError as exc:
         log.warning("ydl.probe_failed", url=url, error=str(exc))
-        await pending.edit_text(t("ydl.unsupported"))
+        await pending.edit_text(t("ydl.probe_failed"))
         return
 
-    if payload.get("error"):
-        await pending.edit_text(t("ydl.unsupported"))
+    if err := payload.get("error"):
+        await pending.edit_text(t(_probe_error_key(err)))
         return
 
     probe = payload.get("probe") or {}
@@ -365,3 +365,16 @@ def _err_msg(err: object) -> str:
     if isinstance(err, dict):
         return str(err.get("message") or err.get("code") or err)
     return str(err)
+
+
+def _probe_error_key(err: object) -> str:
+    """Map extractor failures without mislabelling a valid URL as unsupported."""
+    if not isinstance(err, dict):
+        return "ydl.probe_failed"
+    code = str(err.get("code") or "").lower()
+    message = str(err.get("message") or "").lower()
+    if "not a bot" in message or "confirm you’re not a bot" in message:
+        return "ydl.youtube_blocked"
+    if code in {"invalid_argument", "unsupported"}:
+        return "ydl.unsupported"
+    return "ydl.probe_failed"
