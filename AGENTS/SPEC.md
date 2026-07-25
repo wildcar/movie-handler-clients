@@ -40,6 +40,15 @@ Platform-agnostic so future web/VK frontends reuse it:
   session on a disconnect-looking error so the supervisor heals it. Pings an
   optional notifier `down` once on drop and `up` once on recovery. Exposes
   `name`, `connected`, `set_notifier`, `start_supervisor`.
+  Each session is owned by its own asyncio task (`_run_session`): the transport's
+  anyio cancel scope may only be exited by the task that entered it, so every
+  other task asks for teardown through an event instead of closing the stack
+  itself. Closing it cross-task used to deliver the cancellation to the bot's
+  main task and kill the process (2026-07-25).
+  Every `call_tool` carries a read timeout (`_CALL_TIMEOUT`, 60 s; per-call
+  override via `timeout_seconds`, e.g. 40 s for yt-dlp metadata tools), so a
+  silent server surfaces as `MCPClientError` rather than a stuck handler. A
+  read timeout keeps the session — only disconnect-looking errors drop it.
 - Per-server thin wrappers: `trailer_client.py`, `torrent_client.py` (rutracker),
   `rtorrent_client.py`, `yt_dlp_client.py`, `media_watch_client.py` (httpx client
   for media-watch-web `/api/register`, `/api/records`).
@@ -60,7 +69,11 @@ Three ways to start a download; all converge on the same confirm + poller path.
   Extractor/upstream failures are reported separately from genuinely unsupported
   URLs; YouTube anti-bot responses explicitly say that the link itself was recognised.
   Confirm waits at most 45 seconds for `start_download`, then reports a visible
-  timeout instead of leaving the callback silently pending.
+  timeout instead of leaving the callback silently pending. The «Смотрю видео…»
+  bubble is always resolved: any unexpected failure past it is logged with a
+  traceback and rewritten as `ydl.internal_error`, so a crash can't read as a
+  frozen bot. Genuine cancellation (shutdown) is logged and re-raised, not
+  turned into user-facing copy.
 
 (a) and (b) join the `tdl:<topic_id>:<imdb_id>` confirm callback → rutracker
 `.torrent` fetch → `rtorrent.add_torrent` (with `kind` → destination dir). (c)

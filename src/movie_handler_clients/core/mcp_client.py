@@ -8,6 +8,9 @@ The client is **self-healing**: an unreachable server at startup is not fatal
 (``__aenter__`` begins life disconnected), and a background supervisor keeps
 retrying the connection while down. State changes (down / recovered) are
 surfaced through an optional notifier so the bot can ping the admins.
+
+The session lives in its own dedicated asyncio task — see
+:meth:`BaseMCPClient._run_session` for why that matters.
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ import json
 import time
 from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
+from datetime import timedelta
 from types import TracebackType
 from typing import Any, Self
 
@@ -46,6 +50,15 @@ class BaseMCPClient:
     # Seconds between reconnect attempts while disconnected; also the idle
     # poll cadence of the supervisor while healthy.
     _RECONNECT_DELAY = 15.0
+    # How long a tool call may wait for its response before we give up on
+    # it. The MCP SDK turns this into an ``McpError``, not a cancellation,
+    # so the session survives and the caller gets a normal failure it can
+    # render. Subclasses / individual calls narrow it where the server has
+    # a tighter budget of its own.
+    _CALL_TIMEOUT = 60.0
+    # Grace period for the session task to unwind its HTTP stack on close.
+    # A vanished upstream can wedge the teardown; after this we cancel it.
+    _CLOSE_TIMEOUT = 10.0
 
     def __init__(
         self,
@@ -58,9 +71,12 @@ class BaseMCPClient:
         self._url = url
         self._headers = {"Authorization": f"Bearer {auth_token}"}
         self._traffic = traffic_log
-        self._stack: AsyncExitStack | None = None
         self._session: ClientSession | None = None
         self._name = name or type(self).__name__
+        # Session ownership: the task that entered the transport stack, plus
+        # the event any other task uses to ask it to unwind.
+        self._session_task: asyncio.Task[None] | None = None
+        self._close_event: asyncio.Event | None = None
         # Self-healing machinery.
         self._conn_lock = asyncio.Lock()
         self._supervisor: asyncio.Task[None] | None = None
@@ -103,34 +119,104 @@ class BaseMCPClient:
         await self._close_session(logged=True)
 
     async def _open_session(self) -> None:
-        stack = AsyncExitStack()
+        """Spawn the session-owner task and wait for the MCP handshake."""
+        loop = asyncio.get_running_loop()
+        ready: asyncio.Future[None] = loop.create_future()
+        close_event = asyncio.Event()
+        task = asyncio.create_task(
+            self._run_session(ready, close_event), name=f"mcp-session:{self._name}"
+        )
         try:
-            read, write, _ = await stack.enter_async_context(
-                streamablehttp_client(self._url, headers=self._headers)
-            )
-            session = await stack.enter_async_context(ClientSession(read, write))
-            await session.initialize()
+            await ready
         except BaseException:
-            # BaseExceptionGroup (from anyio task groups) is not a subclass of
-            # Exception; catch the broader BaseException so teardown runs.
-            await stack.aclose()
+            # Handshake failed (or we were cancelled waiting for it) — retire
+            # the half-built session before propagating.
+            close_event.set()
+            try:
+                await self._await_session_task(task)
+            except BaseException:
+                # We're being cancelled ourselves and can't await anything;
+                # cancelling the owner task is enough to keep it from
+                # outliving us (it unwinds its own stack on the way out).
+                task.cancel()
+                raise
             raise
-        self._stack = stack
-        self._session = session
-        log.info("mcp.session_opened", url=self._url)
+        self._session_task = task
+        self._close_event = close_event
+
+    async def _run_session(
+        self, ready: asyncio.Future[None], close_event: asyncio.Event
+    ) -> None:
+        """Own the transport stack for the whole life of one session.
+
+        The streamable-HTTP transport builds an anyio task group whose cancel
+        scope belongs to whichever task entered it, and anyio only permits
+        that scope to be exited from the *same* task. Closing it from a
+        Telegram handler task (which is what a mid-call reconnect used to do)
+        delivered the cancellation to the bot's main task instead and took the
+        whole process down — see the 2026-07-25 incident. So the stack is
+        entered and exited here, in one dedicated task, and every other task
+        only ever signals ``close_event``.
+
+        The task also outlives the handshake: if the transport itself fails
+        later, the ``async with`` unwinds here, ``_session`` drops to ``None``
+        and the supervisor reconnects.
+        """
+        session: ClientSession | None = None
+        try:
+            async with AsyncExitStack() as stack:
+                read, write, _ = await stack.enter_async_context(
+                    streamablehttp_client(self._url, headers=self._headers)
+                )
+                session = await stack.enter_async_context(ClientSession(read, write))
+                await session.initialize()
+                self._session = session
+                log.info("mcp.session_opened", url=self._url)
+                if not ready.done():
+                    ready.set_result(None)
+                await close_event.wait()
+        except BaseException as exc:
+            # Nothing may escape this task: an unretrieved failure here would
+            # surface as a stray "Task exception was never retrieved", and a
+            # CancelledError means we were retired on purpose.
+            if not ready.done():
+                ready.set_exception(exc)
+            elif not isinstance(exc, asyncio.CancelledError):
+                log.warning(
+                    "mcp.session_lost", url=self._url, name=self._name, error=str(exc)
+                )
+        finally:
+            # Only disown the session we opened — a newer one may already be live.
+            if self._session is session:
+                self._session = None
 
     async def _close_session(self, *, logged: bool) -> None:
-        if self._stack is not None:
-            try:
-                await self._stack.aclose()
-            except (Exception, BaseExceptionGroup):
-                # Upstream may have vanished; we only care that our handles
-                # are released.
-                log.debug("mcp.session_close_error", url=self._url, exc_info=True)
-        self._stack = None
+        task = self._session_task
+        close_event = self._close_event
+        self._session_task = None
+        self._close_event = None
+        if close_event is not None:
+            close_event.set()
+        if task is not None:
+            await self._await_session_task(task)
         self._session = None
         if logged:
             log.info("mcp.session_closed", url=self._url)
+
+    async def _await_session_task(self, task: asyncio.Task[None]) -> None:
+        """Wait for the owner task to unwind, cancelling it if it wedges.
+
+        ``wait_for`` cancels the task on timeout, which is safe precisely
+        because the cancellation lands in the task that owns the cancel scope.
+        """
+        try:
+            await asyncio.wait_for(task, timeout=self._CLOSE_TIMEOUT)
+        except TimeoutError:
+            log.warning("mcp.session_close_timeout", url=self._url, name=self._name)
+        except (Exception, BaseExceptionGroup):
+            # Upstream may have vanished; we only care that our handles
+            # are released.
+            log.debug("mcp.session_close_error", url=self._url, exc_info=True)
 
     async def _ensure_session(self) -> None:
         """Open a session if we don't currently have one. Concurrency-safe:
@@ -221,14 +307,19 @@ class BaseMCPClient:
         arguments: dict[str, Any],
         *,
         tg_user_id: int | None = None,
+        timeout_seconds: float | None = None,
     ) -> dict[str, Any]:
         """Invoke an MCP tool and return its parsed JSON payload.
 
-        Raises :class:`MCPClientError` on transport / protocol failures.
+        Raises :class:`MCPClientError` on transport / protocol failures,
+        including a server that never answers within ``timeout_seconds``
+        (default :attr:`_CALL_TIMEOUT`) — no caller is left waiting forever.
         Tool-level errors (returned as ``{"error": {...}}`` in the payload)
         are passed through to the caller unchanged so they can be rendered
         to the end user.
         """
+        budget = timeout_seconds if timeout_seconds is not None else self._CALL_TIMEOUT
+        read_timeout = timedelta(seconds=budget)
         if self._session is None:
             # Disconnected (failed startup or a dropped link). Try once,
             # right now, so a user action doesn't have to wait for the
@@ -245,7 +336,9 @@ class BaseMCPClient:
         try:
             try:
                 assert self._session is not None
-                result = await self._session.call_tool(name, arguments)
+                result = await self._session.call_tool(
+                    name, arguments, read_timeout_seconds=read_timeout
+                )
             except Exception as exc:
                 # The upstream server was restarted or our session id expired —
                 # both land here as "Session terminated" / 404 from the HTTP
@@ -256,12 +349,20 @@ class BaseMCPClient:
                 log.info("mcp.session_stale_retrying", url=self._url)
                 await self._reconnect()
                 assert self._session is not None
-                result = await self._session.call_tool(name, arguments)
+                result = await self._session.call_tool(
+                    name, arguments, read_timeout_seconds=read_timeout
+                )
             payload = _extract_payload(result)
             return payload
-        except Exception as exc:
+        except (Exception, BaseExceptionGroup) as exc:
+            # BaseExceptionGroup (from the transport's anyio task group) is not
+            # an Exception; catch it too so a transport blow-up reaches the
+            # caller as a plain MCPClientError instead of an opaque group.
             error = f"{type(exc).__name__}: {exc}"
-            if _is_disconnect(exc):
+            if _is_request_timeout(exc):
+                # A slow tool, not a dead link — keep the session.
+                log.warning("mcp.call_timeout", url=self._url, tool=name, error=error)
+            elif _is_disconnect(exc):
                 # The link looks dead — drop the session so the supervisor
                 # picks it up, reconnects, and announces recovery.
                 await self._close_session(logged=False)
@@ -326,6 +427,17 @@ def _is_session_terminated(exc: BaseException) -> bool:
     """
     text = str(exc).lower()
     return "session terminated" in text or "404" in text
+
+
+def _is_request_timeout(exc: BaseException) -> bool:
+    """True for 'the server didn't answer in time' — our own read timeout.
+
+    The MCP SDK raises this as an ``McpError`` carrying the message it
+    builds in ``send_request``. It says nothing about the health of the
+    link, so it must not be mistaken for a disconnect (which would drop a
+    perfectly good session every time a tool runs long).
+    """
+    return "timed out while waiting for response" in str(exc).lower()
 
 
 def _is_disconnect(exc: BaseException) -> bool:

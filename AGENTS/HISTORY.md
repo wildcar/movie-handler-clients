@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-07-25 · Stop a stale-session reconnect from killing the bot
+- What: MCP sessions moved into per-client owner tasks (no cross-task cancel-scope exit); read timeout on every `call_tool` (40 s for yt-dlp metadata); the «Смотрю видео…» bubble always resolves, `ydl.internal_error` added.
+- Why: A pasted video URL after the media-host session went stale reconnected from the handler task, cancelled the main task, and exited the process — the user just saw «Смотрю видео…» forever.
+- Files: `AGENTS/{SPEC,STATE}.md`, `core/{mcp_client,yt_dlp_client,i18n}.py`, `handlers/youtube_url.py`, `tests/unit/{test_mcp_client,test_youtube_url}.py`.
+- Next: Deployed on `r1117636`; watch for `mcp.session_lost` / `mcp.call_timeout` in the journal.
+
 ## 2026-07-21 · Correct Telegram bot deployment host
 - What: Corrected deploy docs: the bot and its local MCPs run on `r1117636`, not `homesrv`.
 - Why: Maintainer correction confirmed by the active local systemd units and `/opt/movie-handler-clients` checkout.

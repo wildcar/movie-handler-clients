@@ -18,6 +18,11 @@ Telegram today; web (FastAPI+WS) and VK later.
 - Pasted-video errors distinguish unsupported URLs from recognised URLs rejected by
   YouTube anti-bot protection or another upstream extraction failure; download
   confirmation reports a visible error if `start_download` exceeds 45 seconds.
+- MCP sessions are owned by a dedicated task each, so a stale-session reconnect
+  from a handler task no longer cancels the bot's main task (that crash-looped the
+  process on 2026-07-25). Tool calls carry a read timeout (60 s; 40 s for yt-dlp
+  metadata), and the «Смотрю видео…» bubble is always resolved — an unexpected
+  failure becomes `ydl.internal_error` with a traceback in the log.
 - Harness migrated to the `agent-template` layout.
 
 ## Next

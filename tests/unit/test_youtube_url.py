@@ -93,3 +93,47 @@ async def test_confirm_reports_start_download_timeout(monkeypatch: pytest.Monkey
     message.answer.assert_awaited_once()
     (body,), _ = message.answer.call_args
     assert "не ответил" in body
+
+
+async def test_unexpected_failure_replaces_pending_bubble() -> None:
+    """A crash mid-probe must not leave «Смотрю видео…» hanging forever."""
+    url = "https://www.1tv.ru/-/skrlsx"
+    pending = SimpleNamespace(edit_text=AsyncMock())
+    message = SimpleNamespace(
+        text=url,
+        from_user=SimpleNamespace(id=42),
+        answer=AsyncMock(return_value=pending),
+    )
+    yt_dlp = AsyncMock()
+    yt_dlp.probe.side_effect = RuntimeError("transport blew up")
+
+    await youtube_url_mod.on_url(  # type: ignore[arg-type]
+        message,
+        yt_dlp=yt_dlp,
+        ydl_cache=YtDlpCache(),
+    )
+
+    pending.edit_text.assert_awaited_once()
+    (body,), _ = pending.edit_text.call_args
+    assert "внутренняя ошибка" in body.lower()
+
+
+async def test_cancellation_propagates_without_swallowing() -> None:
+    """Genuine cancellation (bot shutting down) must not be turned into copy."""
+    pending = SimpleNamespace(edit_text=AsyncMock())
+    message = SimpleNamespace(
+        text="https://youtu.be/abc",
+        from_user=SimpleNamespace(id=42),
+        answer=AsyncMock(return_value=pending),
+    )
+    yt_dlp = AsyncMock()
+    yt_dlp.probe.side_effect = asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        await youtube_url_mod.on_url(  # type: ignore[arg-type]
+            message,
+            yt_dlp=yt_dlp,
+            ydl_cache=YtDlpCache(),
+        )
+
+    pending.edit_text.assert_not_awaited()

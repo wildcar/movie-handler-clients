@@ -101,12 +101,37 @@ async def on_url(
 
     tg_user_id = message.from_user.id if message.from_user else None
 
-    if _PLAYLIST_RE.search(url):
-        await _handle_playlist(message, yt_dlp, url, tg_user_id=tg_user_id)
-        return
-
     pending = await message.answer(t("ydl.fetching"))
 
+    # Whatever goes wrong past this point, the «Смотрю видео…» bubble must
+    # not be left hanging — that reads as a frozen bot. MCP failures have
+    # tailored copy; anything else gets the generic apology plus a traceback
+    # in the log.
+    try:
+        if _PLAYLIST_RE.search(url):
+            await _handle_playlist(pending, yt_dlp, url, tg_user_id=tg_user_id)
+        else:
+            await _probe_and_render(
+                message, pending, yt_dlp, ydl_cache, url, tg_user_id=tg_user_id
+            )
+    except asyncio.CancelledError:
+        log.warning("ydl.cancelled", url=url)
+        raise
+    except Exception:
+        log.exception("ydl.preview_crashed", url=url)
+        await _safe_edit(pending, t("ydl.internal_error"))
+
+
+async def _probe_and_render(
+    message: Message,
+    pending: Message,
+    yt_dlp: YtDlpMCPClient,
+    ydl_cache: YtDlpCache,
+    url: str,
+    *,
+    tg_user_id: int | None,
+) -> None:
+    """Probe ``url`` and replace ``pending`` with a preview card or a reason."""
     try:
         payload = await yt_dlp.probe(url, tg_user_id=tg_user_id)
     except MCPClientError as exc:
@@ -254,14 +279,25 @@ async def on_confirm(
     )
 
 
+async def _safe_edit(pending: Message, text: str) -> None:
+    """Best-effort rewrite of the pending bubble; never raises.
+
+    Called from failure paths only — if Telegram refuses the edit too (the
+    message was deleted, the chat is gone), there's nothing left to salvage.
+    """
+    try:
+        await pending.edit_text(text)
+    except Exception:
+        log.debug("ydl.pending_edit_failed", exc_info=True)
+
+
 async def _handle_playlist(
-    message: Message,
+    pending: Message,
     yt_dlp: YtDlpMCPClient,
     url: str,
     *,
     tg_user_id: int | None,
 ) -> None:
-    pending = await message.answer(t("ydl.fetching"))
     try:
         payload = await yt_dlp.list_playlist(url, tg_user_id=tg_user_id)
     except MCPClientError as exc:

@@ -15,9 +15,17 @@ from .mcp_client import BaseMCPClient
 class YtDlpMCPClient(BaseMCPClient):
     """Calls the five yt-dlp tools."""
 
+    # The server reaps its own yt-dlp metadata run at
+    # `probe_timeout_seconds` (30s by default) and answers with an
+    # `upstream_error`, so anything past that plus a round-trip margin
+    # means the answer is never coming.
+    _METADATA_TIMEOUT = 40.0
+
     async def probe(self, url: str, *, tg_user_id: int | None = None) -> dict[str, Any]:
         """Metadata + format list for ``url``. No download."""
-        return await self.call_tool("probe", {"url": url}, tg_user_id=tg_user_id)
+        return await self.call_tool(
+            "probe", {"url": url}, tg_user_id=tg_user_id, timeout_seconds=self._METADATA_TIMEOUT
+        )
 
     async def start_download(
         self,
@@ -47,7 +55,9 @@ class YtDlpMCPClient(BaseMCPClient):
         args: dict[str, Any] = {"url": url}
         if limit is not None:
             args["limit"] = limit
-        return await self.call_tool("list_playlist", args, tg_user_id=tg_user_id)
+        return await self.call_tool(
+            "list_playlist", args, tg_user_id=tg_user_id, timeout_seconds=self._METADATA_TIMEOUT
+        )
 
     async def health_check(self, *, tg_user_id: int | None = None) -> dict[str, Any]:
         """yt-dlp version + cookies state + canary probe."""
