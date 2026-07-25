@@ -25,12 +25,16 @@ import asyncio
 import hashlib
 import re
 import secrets
+from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
 import structlog
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
@@ -47,6 +51,11 @@ router = Router(name="youtube_url")
 log = structlog.get_logger(__name__)
 
 _START_TIMEOUT_SECONDS = 45.0
+# Budget for fetching a preview thumbnail ourselves when Telegram won't.
+_THUMBNAIL_TIMEOUT_SECONDS = 8.0
+# Telegram's own limit for a photo upload is 10 MB; a preview that heavy is
+# not worth the wait either way.
+_THUMBNAIL_MAX_BYTES = 5 * 1024 * 1024
 
 
 # Any http(s) URL kicks the handler — yt-dlp's extractor list is the
@@ -172,23 +181,81 @@ async def _probe_and_render(
         ]
     )
 
-    if thumb_url:
-        # Photo + caption replaces the «Смотрю видео…» bubble. Telegram
-        # caps captions at 1024 chars; titles in the wild stay well under.
+    # Photo + caption replaces the «Смотрю видео…» bubble — but only once the
+    # photo is actually accepted. Deleting the bubble first left nothing on
+    # screen when Telegram refused the picture. Telegram caps captions at 1024
+    # chars; titles in the wild stay well under.
+    if thumb_url and await _send_photo_card(message, thumb_url, caption, keyboard):
         await pending.delete()
+        return
+
+    await pending.edit_text(
+        caption,
+        parse_mode="HTML",
+        reply_markup=keyboard,
+        disable_web_page_preview=True,
+    )
+
+
+async def _send_photo_card(
+    message: Message,
+    thumb_url: str,
+    caption: str,
+    keyboard: InlineKeyboardMarkup,
+) -> bool:
+    """Send the preview card with its thumbnail. False if the card must go out
+    as plain text instead.
+
+    Two attempts, because Telegram fetches a photo URL from its own servers
+    and some hosts refuse it (static.1tv.ru answers Telegram with something
+    that isn't the image — «wrong type of the web page content» — while
+    serving us a clean `image/jpeg`). So we hand over the bytes ourselves
+    before giving up on the picture.
+    """
+    try:
         await message.answer_photo(
-            photo=thumb_url,
-            caption=caption,
-            parse_mode="HTML",
-            reply_markup=keyboard,
+            photo=thumb_url, caption=caption, parse_mode="HTML", reply_markup=keyboard
         )
-    else:
-        await pending.edit_text(
-            caption,
-            parse_mode="HTML",
-            reply_markup=keyboard,
-            disable_web_page_preview=True,
+        return True
+    except TelegramBadRequest as exc:
+        log.info("ydl.thumbnail_url_rejected", thumb=thumb_url, error=str(exc))
+
+    photo = await _fetch_thumbnail(thumb_url)
+    if photo is None:
+        return False
+    try:
+        await message.answer_photo(
+            photo=photo, caption=caption, parse_mode="HTML", reply_markup=keyboard
         )
+        return True
+    except TelegramBadRequest as exc:
+        log.info("ydl.thumbnail_upload_rejected", thumb=thumb_url, error=str(exc))
+        return False
+
+
+async def _fetch_thumbnail(thumb_url: str) -> BufferedInputFile | None:
+    """Download a thumbnail for upload. ``None`` when it isn't worth sending.
+
+    Bounded on both time and size: a preview card is never worth stalling the
+    handler or holding megabytes for.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=_THUMBNAIL_TIMEOUT_SECONDS) as client:
+            resp = await client.get(thumb_url, follow_redirects=True)
+        resp.raise_for_status()
+    except Exception as exc:
+        log.info("ydl.thumbnail_fetch_failed", thumb=thumb_url, error=str(exc))
+        return None
+
+    if not resp.headers.get("content-type", "").startswith("image/"):
+        log.info("ydl.thumbnail_not_an_image", thumb=thumb_url)
+        return None
+    if len(resp.content) > _THUMBNAIL_MAX_BYTES:
+        log.info("ydl.thumbnail_too_large", thumb=thumb_url, size=len(resp.content))
+        return None
+
+    name = PurePosixPath(urlparse(thumb_url).path).name or "thumb.jpg"
+    return BufferedInputFile(resp.content, filename=name)
 
 
 @router.callback_query(F.data.startswith("ydl:"))
@@ -280,15 +347,22 @@ async def on_confirm(
 
 
 async def _safe_edit(pending: Message, text: str) -> None:
-    """Best-effort rewrite of the pending bubble; never raises.
+    """Best-effort report into the pending bubble; never raises.
 
-    Called from failure paths only — if Telegram refuses the edit too (the
-    message was deleted, the chat is gone), there's nothing left to salvage.
+    Editing loses to a bubble that's already been deleted — which is exactly
+    what happens when the crash lands between the delete and the card — so
+    fall back to a fresh message in the same chat. Only a dead chat can make
+    both fail, and then there's nothing left to salvage.
     """
     try:
         await pending.edit_text(text)
+        return
     except Exception:
         log.debug("ydl.pending_edit_failed", exc_info=True)
+    try:
+        await pending.answer(text)
+    except Exception:
+        log.debug("ydl.pending_answer_failed", exc_info=True)
 
 
 async def _handle_playlist(

@@ -23,6 +23,9 @@ Telegram today; web (FastAPI+WS) and VK later.
   process on 2026-07-25). Tool calls carry a read timeout (60 s; 40 s for yt-dlp
   metadata), and the «Смотрю видео…» bubble is always resolved — an unexpected
   failure becomes `ydl.internal_error` with a traceback in the log.
+- Preview thumbnails survive hosts that Telegram itself can't fetch: the bot
+  downloads the image and uploads the bytes, then degrades to a text-only card.
+  The bubble is deleted only after the photo card is accepted.
 - Harness migrated to the `agent-template` layout.
 
 ## Next

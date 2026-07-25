@@ -70,7 +70,11 @@ Three ways to start a download; all converge on the same confirm + poller path.
   URLs; YouTube anti-bot responses explicitly say that the link itself was recognised.
   Confirm waits at most 45 seconds for `start_download`, then reports a visible
   timeout instead of leaving the callback silently pending. The «Смотрю видео…»
-  bubble is always resolved: any unexpected failure past it is logged with a
+  bubble is always resolved: the card's photo is sent *before* the bubble is
+  deleted, Telegram's refusal to fetch a thumbnail URL («wrong type of the web
+  page content» — static.1tv.ru) falls back to uploading the bytes ourselves
+  (8 s / 5 MiB cap) and then to a text-only card, and the error path sends a
+  fresh message when the bubble is already gone. Any unexpected failure is logged with a
   traceback and rewritten as `ydl.internal_error`, so a crash can't read as a
   frozen bot. Genuine cancellation (shutdown) is logged and re-raised, not
   turned into user-facing copy.

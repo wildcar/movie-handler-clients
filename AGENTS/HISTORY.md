@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-07-25 · Send the preview card before deleting the bubble
+- What: `answer_photo` failures no longer lose the card: the bubble is deleted only on success, a URL Telegram won't fetch is re-sent as uploaded bytes, then as a text card; `_safe_edit` falls back to a new message.
+- Why: 1tv thumbnails come back to Telegram as «wrong type of the web page content», and the bubble had already been deleted — the user saw «Смотрю видео…» blink out into silence.
+- Files: `AGENTS/{SPEC,STATE}.md`, `handlers/youtube_url.py`, `tests/unit/test_youtube_url.py`.
+- Next: —
+
 ## 2026-07-25 · Stop a stale-session reconnect from killing the bot
 - What: MCP sessions moved into per-client owner tasks (no cross-task cancel-scope exit); read timeout on every `call_tool` (40 s for yt-dlp metadata); the «Смотрю видео…» bubble always resolves, `ydl.internal_error` added.
 - Why: A pasted video URL after the media-host session went stale reconnected from the handler task, cancelled the main task, and exited the process — the user just saw «Смотрю видео…» forever.

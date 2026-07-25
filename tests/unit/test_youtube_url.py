@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import BufferedInputFile
 
 from movie_handler_clients.telegram.handlers import youtube_url as youtube_url_mod
 from movie_handler_clients.telegram.ydl_cache import YtDlpCache, YtDlpEntry
@@ -137,3 +139,91 @@ async def test_cancellation_propagates_without_swallowing() -> None:
         )
 
     pending.edit_text.assert_not_awaited()
+
+
+def _probe_payload() -> dict:
+    return {
+        "probe": {
+            "video_id": "874850",
+            "title": "Наперегонки со временем",
+            "channel": "Первый канал",
+            "duration_seconds": 2820,
+            "thumbnails": [{"url": "https://static.1tv.ru/splash.jpg", "width": 1280,
+                            "height": 720}],
+        }
+    }
+
+
+def _bad_request(message: str) -> TelegramBadRequest:
+    return TelegramBadRequest(method=SimpleNamespace(), message=message)  # type: ignore[arg-type]
+
+
+async def test_thumbnail_refused_by_telegram_falls_back_to_a_text_card(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Telegram can't fetch static.1tv.ru; the card must still arrive."""
+    pending = SimpleNamespace(edit_text=AsyncMock(), delete=AsyncMock(), answer=AsyncMock())
+    message = SimpleNamespace(
+        text="https://www.1tv.ru/-/skrlsx",
+        from_user=SimpleNamespace(id=42),
+        answer=AsyncMock(return_value=pending),
+        answer_photo=AsyncMock(side_effect=_bad_request("wrong type of the web page content")),
+    )
+    yt_dlp = AsyncMock()
+    yt_dlp.probe.return_value = _probe_payload()
+    # Our own fetch attempt is out of scope here — skip straight to the text card.
+    monkeypatch.setattr(youtube_url_mod, "_fetch_thumbnail", AsyncMock(return_value=None))
+
+    await youtube_url_mod.on_url(  # type: ignore[arg-type]
+        message,
+        yt_dlp=yt_dlp,
+        ydl_cache=YtDlpCache(),
+    )
+
+    # The bubble becomes the card instead of being deleted and left empty.
+    pending.delete.assert_not_awaited()
+    pending.edit_text.assert_awaited_once()
+    (body,), kwargs = pending.edit_text.call_args
+    assert "Наперегонки" in body
+    assert kwargs["reply_markup"].inline_keyboard[0][0].callback_data.startswith("ydl:")
+
+
+async def test_thumbnail_refused_by_url_is_uploaded_as_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pending = SimpleNamespace(edit_text=AsyncMock(), delete=AsyncMock(), answer=AsyncMock())
+    photo = BufferedInputFile(b"jpegbytes", filename="splash.jpg")
+    message = SimpleNamespace(
+        text="https://www.1tv.ru/-/skrlsx",
+        from_user=SimpleNamespace(id=42),
+        answer=AsyncMock(return_value=pending),
+        answer_photo=AsyncMock(
+            side_effect=[_bad_request("wrong type of the web page content"), None]
+        ),
+    )
+    yt_dlp = AsyncMock()
+    yt_dlp.probe.return_value = _probe_payload()
+    monkeypatch.setattr(youtube_url_mod, "_fetch_thumbnail", AsyncMock(return_value=photo))
+
+    await youtube_url_mod.on_url(  # type: ignore[arg-type]
+        message,
+        yt_dlp=yt_dlp,
+        ydl_cache=YtDlpCache(),
+    )
+
+    assert message.answer_photo.await_count == 2
+    assert message.answer_photo.await_args.kwargs["photo"] is photo
+    pending.delete.assert_awaited_once()
+    pending.edit_text.assert_not_awaited()
+
+
+async def test_failure_after_the_bubble_is_gone_still_reports() -> None:
+    """edit_text on a deleted bubble must not swallow the error report."""
+    pending = SimpleNamespace(
+        edit_text=AsyncMock(side_effect=_bad_request("message to edit not found")),
+        answer=AsyncMock(),
+    )
+
+    await youtube_url_mod._safe_edit(pending, "boom")  # type: ignore[arg-type]
+
+    pending.answer.assert_awaited_once_with("boom")
