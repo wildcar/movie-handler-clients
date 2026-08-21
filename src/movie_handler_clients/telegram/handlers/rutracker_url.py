@@ -27,6 +27,7 @@ from aiogram.types import Message
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
 from ...core.torrent_client import RutrackerTorrentMCPClient
+from ..challenge import maybe_handle_challenge
 from ..keyboards import rutracker_url_candidates_keyboard, torrent_confirm_keyboard
 from ..movie_meta_cache import MovieMetaCache
 from ..title_cache import TitleCache
@@ -69,6 +70,7 @@ async def on_rutracker_url(
     mcp: MovieMetadataMCPClient,
     title_cache: TitleCache,
     movie_meta_cache: MovieMetaCache,
+    admin_user_ids: set[int],
 ) -> None:
     topic_id = detect_rutracker_topic_url(message.text or "")
     if topic_id is None:
@@ -89,7 +91,8 @@ async def on_rutracker_url(
         return
 
     if err := topic_payload.get("error"):
-        await pending.edit_text(t("rt_url.topic_failed", detail=_err_msg(err)))
+        if not await maybe_handle_challenge(pending, err, tg_user_id, admin_user_ids, edit=True):
+            await pending.edit_text(t("rt_url.topic_failed", detail=_err_msg(err)))
         return
 
     topic = topic_payload.get("topic") or {}

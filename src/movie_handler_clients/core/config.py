@@ -94,6 +94,25 @@ class Settings(BaseSettings):
         ),
     )
 
+    rutracker_challenge_url_base: str | None = Field(
+        None,
+        description=(
+            "Public base URL of the noVNC challenge page (e.g. "
+            "https://rt.wildcar.org). When rutracker returns "
+            "cloudflare_challenge / manual_auth_required the bot mints a "
+            "one-time link under this base and sends it to admins as a "
+            "button. Unset disables the hand-off (generic error instead)."
+        ),
+    )
+    rutracker_challenge_token_path: str | None = Field(
+        None,
+        description=(
+            "File the bot writes the one-time challenge token to "
+            "(e.g. /var/lib/rutracker-challenge/token). The challenge "
+            "gate on the same host validates links against it."
+        ),
+    )
+
     def admin_user_ids(self) -> set[int]:
         out: set[int] = set()
         for raw in self.admin_telegram_ids.split(","):

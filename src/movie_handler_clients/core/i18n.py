@@ -39,6 +39,19 @@ RU: Final[dict[str, str]] = {
         "bb_session в файле сервиса."
     ),
     "download.not_configured": "На сервере не заданы логин и пароль rutracker.",
+    "challenge.button": "🛡 Пройти проверку",
+    "challenge.admin_prompt": (
+        "rutracker закрыт проверкой Cloudflare. Откройте ссылку, поставьте "
+        "галочку «Я человек» и повторите действие. Ссылка действует 30 минут."
+    ),
+    "challenge.user_wait": (
+        "rutracker закрыт проверкой Cloudflare — администратор уже получил "
+        "ссылку для её прохождения. Попробуйте через пару минут."
+    ),
+    "challenge.admin_pinged": (
+        "Пользователь наткнулся на проверку Cloudflare на rutracker. "
+        "Пройдите её по кнопке — и пусть повторит запрос."
+    ),
     "download.reopen_card": "Откройте карточку фильма заново и нажмите «Скачать».",
     "download.sent_caption": "✅ Торрент-файл готов.",
     "download.sent_to_server": (

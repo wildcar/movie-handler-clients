@@ -27,6 +27,11 @@ Telegram today; web (FastAPI+WS) and VK later.
   downloads the image and uploads the bytes, then degrades to a text-only card.
   The bubble is deleted only after the photo card is accepted.
 - Harness migrated to the `agent-template` layout.
+- Cloudflare-challenge hand-off: on `cloudflare_challenge` / `manual_auth_required`
+  from rutracker the bot mints a one-time token (30 min, file shared with
+  `challenge-gate` on the same host) and sends admins a «Пройти проверку» button
+  linking to the gated noVNC page (`https://rtcc.wildcar.org/enter/<token>`).
+  Non-admins get a "wait" note; feature off when the two env vars are unset.
 
 ## Next
 

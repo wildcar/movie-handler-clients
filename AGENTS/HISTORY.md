@@ -5,6 +5,14 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-08-21 · Cloudflare-challenge hand-off button
+- What: on `cloudflare_challenge`/`manual_auth_required` the bot writes a one-time token and sends admins an inline button to the gated noVNC page; non-admins get a wait note. New env: `RUTRACKER_CHALLENGE_URL_BASE`, `RUTRACKER_CHALLENGE_TOKEN_PATH`.
+- Why: solving Turnstile required an operator SSH tunnel; now it's one tap from a phone via `rtcc.wildcar.org` (gate lives in rutracker-torrent-mcp/deploy).
+- Files: `telegram/challenge.py`, `core/{config,i18n}.py`, `telegram/handlers/{details,rutracker_url}.py`, `deploy/movie-handler-telegram.service`, `.env.example`, `tests/unit/test_challenge.py`.
+- Next: —
+
+---
+
 ## 2026-07-25 · Send the preview card before deleting the bubble
 - What: `answer_photo` failures no longer lose the card: the bubble is deleted only on success, a URL Telegram won't fetch is re-sent as uploaded bytes, then as a text card; `_safe_edit` falls back to a new message.
 - Why: 1tv thumbnails come back to Telegram as «wrong type of the web page content», and the bubble had already been deleted — the user saw «Смотрю видео…» blink out into silence.

@@ -20,6 +20,7 @@ from ...core.rtorrent_client import RtorrentMCPClient
 from ...core.state_db import StateDb
 from ...core.torrent_client import RutrackerTorrentMCPClient
 from ...core.trailer_client import MovieTrailerMCPClient
+from ..challenge import maybe_handle_challenge
 from ..keyboards import (
     details_keyboard,
     search_results_keyboard,
@@ -365,7 +366,7 @@ async def _run_torrent_search(
             await cq.message.answer(t("download.captcha"))
         elif code == "not_configured":
             await cq.message.answer(t("download.not_configured"))
-        else:
+        elif not await maybe_handle_challenge(cq.message, err, tg_user_id, admin_user_ids):
             await cq.message.answer(t("download.error", detail=_err_msg(err)))
         return
 
@@ -527,7 +528,7 @@ async def on_torrent_confirm(
         code = (err or {}).get("code") if isinstance(err, dict) else None
         if code == "captcha_required":
             await cq.message.answer(t("download.captcha"))
-        else:
+        elif not await maybe_handle_challenge(cq.message, err, tg_user_id, admin_user_ids):
             await cq.message.answer(t("download.error", detail=_err_msg(err)))
         return
 

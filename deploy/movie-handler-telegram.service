@@ -23,6 +23,9 @@ ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
 ReadWritePaths=/opt/movie-handler-clients/.cache
+# Cloudflare-challenge hand-off: the bot writes the one-time token here;
+# challenge-gate (rutracker-torrent-mcp/deploy) validates links against it.
+ReadWritePaths=-/var/lib/rutracker-challenge
 
 [Install]
 WantedBy=multi-user.target
