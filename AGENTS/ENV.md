@@ -15,6 +15,19 @@ Runs on the **bot host** (`r1117636`, this current/dev server) as the
 Reaches the bot-host MCPs over `127.0.0.1` and the media-host MCPs / media-watch
 over `wildcar.ru`. Systemd units + `update.sh` are in `deploy/`.
 
+Deploy (after pushing to `main`) — two steps, because `update.sh` refuses to run
+as anyone but `movie` and the restart needs root:
+
+```bash
+sudo -iu movie /opt/movie-handler-clients/deploy/update.sh
+sudo systemctl restart movie-handler-telegram.service
+```
+
+`-i` is not optional: without `movie`'s login environment the script cannot find
+`uv` (it lives in that user's `~/.local/bin`) and aborts. The script hard-resets
+**all four** `/opt` checkouts to `origin/main`, so push everything you want live
+first. `--restart` exists but needs the sudoers rule in the script header.
+
 ## Environment variables
 
 Loaded by `pydantic-settings` from `.env` (gitignored). See `.env.example`.
