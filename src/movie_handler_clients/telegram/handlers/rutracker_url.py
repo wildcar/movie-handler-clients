@@ -22,7 +22,7 @@ from typing import Any
 
 import structlog
 from aiogram import F, Router
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InaccessibleMessage, Message
 
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
@@ -76,12 +76,39 @@ async def on_rutracker_url(
     if topic_id is None:
         return  # filter said yes, regex says no — nothing to do
     tg_user_id = message.from_user.id if message.from_user else None
+    await _run_topic_lookup(
+        message,
+        topic_id,
+        tg_user_id,
+        torrent,
+        mcp,
+        title_cache,
+        movie_meta_cache,
+        admin_user_ids,
+    )
 
+
+async def _run_topic_lookup(
+    target: Message,
+    topic_id: int,
+    tg_user_id: int | None,
+    torrent: RutrackerTorrentMCPClient | None,
+    mcp: MovieMetadataMCPClient,
+    title_cache: TitleCache,
+    movie_meta_cache: MovieMetaCache,
+    admin_user_ids: set[int],
+) -> None:
+    """Topic → candidates → confirm buttons, answering below ``target``.
+
+    Split out of the handler so a challenge hand-off can replay it from
+    the «Проверку прошёл» button, which arrives as a callback query on a
+    different message than the pasted link.
+    """
     if torrent is None:
-        await message.answer(t("stub.download"))
+        await target.answer(t("stub.download"))
         return
 
-    pending = await message.answer(t("rt_url.fetching"))
+    pending = await target.answer(t("rt_url.fetching"))
 
     try:
         topic_payload = await torrent.get_topic_info(topic_id, tg_user_id=tg_user_id)
@@ -91,7 +118,22 @@ async def on_rutracker_url(
         return
 
     if err := topic_payload.get("error"):
-        if not await maybe_handle_challenge(pending, err, tg_user_id, admin_user_ids, edit=True):
+        if not await maybe_handle_challenge(
+            pending,
+            err,
+            tg_user_id,
+            admin_user_ids,
+            edit=True,
+            retry=lambda new_cq: _retry_topic_lookup(
+                new_cq,
+                topic_id,
+                torrent,
+                mcp,
+                title_cache,
+                movie_meta_cache,
+                admin_user_ids,
+            ),
+        ):
             await pending.edit_text(t("rt_url.topic_failed", detail=_err_msg(err)))
         return
 
@@ -160,6 +202,31 @@ async def on_rutracker_url(
         parse_mode="HTML",
         reply_markup=rutracker_url_candidates_keyboard(topic_id, candidates),
         disable_web_page_preview=True,
+    )
+
+
+async def _retry_topic_lookup(
+    cq: CallbackQuery,
+    topic_id: int,
+    torrent: RutrackerTorrentMCPClient | None,
+    mcp: MovieMetadataMCPClient,
+    title_cache: TitleCache,
+    movie_meta_cache: MovieMetaCache,
+    admin_user_ids: set[int],
+) -> None:
+    """Replay the lookup in the chat where «Проверку прошёл» was pressed."""
+    await cq.answer(t("challenge.retrying"))
+    if cq.message is None or isinstance(cq.message, InaccessibleMessage):
+        return
+    await _run_topic_lookup(
+        cq.message,
+        topic_id,
+        cq.from_user.id if cq.from_user else None,
+        torrent,
+        mcp,
+        title_cache,
+        movie_meta_cache,
+        admin_user_ids,
     )
 
 

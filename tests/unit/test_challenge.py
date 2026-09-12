@@ -111,3 +111,99 @@ async def test_edit_replaces_pending_message(
     assert await challenge.maybe_handle_challenge(msg, err, 42, {42}, edit=True)  # type: ignore[arg-type]
     assert msg.answers == []
     assert len(msg.edits) == 1
+
+
+class _FakeUser:
+    def __init__(self, user_id: int) -> None:
+        self.id = user_id
+
+
+class _FakeCallbackQuery:
+    def __init__(self, data: str, message: _FakeMessage | None) -> None:
+        self.data = data
+        self.message = message
+        self.from_user = _FakeUser(42)
+        self.answers: list[tuple[str | None, bool]] = []
+
+    async def answer(self, text: str | None = None, show_alert: bool = False) -> None:
+        self.answers.append((text, show_alert))
+
+
+class _FakeMessageWithMarkup(_FakeMessage):
+    def __init__(self) -> None:
+        super().__init__()
+        self.markup_cleared = False
+
+    async def edit_reply_markup(self, reply_markup: Any = None) -> None:
+        self.markup_cleared = reply_markup is None
+
+
+@pytest.mark.asyncio
+async def test_retry_button_replays_the_action(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _configure(monkeypatch, "https://rtcc.example", str(tmp_path / "token"))
+    msg = _FakeMessage()
+    fired: list[object] = []
+
+    async def _retry(cq: Any) -> None:
+        fired.append(cq)
+
+    err = {"code": "cloudflare_challenge", "message": "..."}
+    assert await challenge.maybe_handle_challenge(  # type: ignore[arg-type]
+        msg, err, 42, {42}, retry=_retry
+    )
+    [(_text, markup)] = msg.answers
+    button = markup.inline_keyboard[1][0]
+    assert button.callback_data.startswith(challenge.RETRY_PREFIX)
+
+    cq_message = _FakeMessageWithMarkup()
+    cq = _FakeCallbackQuery(button.callback_data, cq_message)
+    await challenge.on_challenge_passed(cq)  # type: ignore[arg-type]
+    assert fired == [cq]
+    assert cq_message.markup_cleared
+    # The retry owns the spinner — the handler must not answer the query.
+    assert cq.answers == []
+
+
+@pytest.mark.asyncio
+async def test_retry_fires_once(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _configure(monkeypatch, "https://rtcc.example", str(tmp_path / "token"))
+    msg = _FakeMessage()
+    calls = 0
+
+    async def _retry(cq: Any) -> None:
+        nonlocal calls
+        calls += 1
+
+    err = {"code": "cloudflare_challenge", "message": "..."}
+    assert await challenge.maybe_handle_challenge(  # type: ignore[arg-type]
+        msg, err, 42, {42}, retry=_retry
+    )
+    data = msg.answers[0][1].inline_keyboard[1][0].callback_data
+    for _ in range(2):
+        await challenge.on_challenge_passed(  # type: ignore[arg-type]
+            _FakeCallbackQuery(data, _FakeMessageWithMarkup())
+        )
+    assert calls == 1
+
+
+@pytest.mark.asyncio
+async def test_expired_retry_tells_the_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    cq = _FakeCallbackQuery(f"{challenge.RETRY_PREFIX}nope", _FakeMessageWithMarkup())
+    await challenge.on_challenge_passed(cq)  # type: ignore[arg-type]
+    [(text, show_alert)] = cq.answers
+    assert show_alert and text
+
+
+@pytest.mark.asyncio
+async def test_logged_out_says_sign_in_not_cloudflare(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    _configure(monkeypatch, "https://rtcc.example", str(tmp_path / "token"))
+    msg = _FakeMessage()
+    err = {"code": "manual_auth_required", "message": "..."}
+    assert await challenge.maybe_handle_challenge(msg, err, 42, {42})  # type: ignore[arg-type]
+    [(text, _markup)] = msg.answers
+    assert text.startswith("Сессия rutracker разлогинена")
+    assert "парол" in text

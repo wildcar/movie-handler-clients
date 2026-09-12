@@ -26,6 +26,7 @@ from ..core.torrent_client import RutrackerTorrentMCPClient
 from ..core.traffic_log import TrafficLog
 from ..core.trailer_client import MovieTrailerMCPClient
 from ..core.yt_dlp_client import YtDlpMCPClient
+from .challenge import router as challenge_router
 from .handlers import admin as admin_handler
 from .handlers import details as details_handler
 from .handlers import list as list_handler
@@ -502,6 +503,9 @@ async def _run(settings: Settings) -> None:
             state_db=state_db,
             admin_user_ids=admin_user_ids,
         )
+        # Challenge first: its «Проверку прошёл» callback replays whatever
+        # the hand-off interrupted, and belongs to no feature router.
+        dp.include_router(challenge_router)
         dp.include_router(status_handler.router)
         dp.include_router(list_handler.router)
         dp.include_router(whoami_handler.router)

@@ -32,6 +32,11 @@ Telegram today; web (FastAPI+WS) and VK later.
   `challenge-gate` on the same host) and sends admins a «Пройти проверку» button
   linking to the gated noVNC page (`https://rtcc.wildcar.org/enter/<token>`).
   Non-admins get a "wait" note; feature off when the two env vars are unset.
+  The hand-off carries a second button, «Проверку прошёл — повторить», which
+  replays the action the challenge interrupted (torrent search, `tdl:` fetch,
+  pasted-URL lookup) in the chat where it was pressed; the retry is parked
+  in-process for 30 min, fires once, and the wording now distinguishes a
+  Cloudflare gate from a logged-out session (that one asks for a sign-in).
 
 ## Next
 

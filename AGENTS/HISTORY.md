@@ -5,6 +5,14 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-09-12 · «Проверку прошёл» retry button on the challenge hand-off
+- What: the challenge message gained a second button that replays the interrupted action (`_run_torrent_search`, `_run_torrent_confirm`, `_run_topic_lookup` split out for it); retries park in-process (30 min, single-shot); `manual_auth_required` now says "сессия разлогинена, войдите", not "Cloudflare".
+- Why: after solving Turnstile via VNC there was nothing to press — repeating the request hit the same message, and the login-form screen was mislabelled as a Cloudflare check.
+- Files: `telegram/challenge.py`, `telegram/bot.py`, `telegram/handlers/{details,rutracker_url}.py`, `core/i18n.py`, `AGENTS/STATE.md`, `tests/unit/test_challenge.py`.
+- Next: —
+
+---
+
 ## 2026-08-21 · Cloudflare-challenge hand-off button
 - What: on `cloudflare_challenge`/`manual_auth_required` the bot writes a one-time token and sends admins an inline button to the gated noVNC page; non-admins get a wait note. New env: `RUTRACKER_CHALLENGE_URL_BASE`, `RUTRACKER_CHALLENGE_TOKEN_PATH`.
 - Why: solving Turnstile required an operator SSH tunnel; now it's one tap from a phone via `rtcc.wildcar.org` (gate lives in rutracker-torrent-mcp/deploy).

@@ -366,7 +366,21 @@ async def _run_torrent_search(
             await cq.message.answer(t("download.captcha"))
         elif code == "not_configured":
             await cq.message.answer(t("download.not_configured"))
-        elif not await maybe_handle_challenge(cq.message, err, tg_user_id, admin_user_ids):
+        elif not await maybe_handle_challenge(
+            cq.message,
+            err,
+            tg_user_id,
+            admin_user_ids,
+            retry=lambda new_cq: _run_torrent_search(
+                new_cq,
+                torrent,
+                torrent_cache,
+                title_cache,
+                imdb_id,
+                season=season,
+                admin_user_ids=admin_user_ids,
+            ),
+        ):
             await cq.message.answer(t("download.error", detail=_err_msg(err)))
         return
 
@@ -500,6 +514,36 @@ async def on_torrent_confirm(
         await cq.answer()
         return
     imdb_id = parts[2] if len(parts) > 2 else ""
+    await _run_torrent_confirm(
+        cq,
+        topic_id,
+        imdb_id,
+        torrent,
+        rtorrent,
+        title_cache,
+        movie_meta_cache,
+        state_db,
+        admin_user_ids,
+    )
+
+
+async def _run_torrent_confirm(
+    cq: CallbackQuery,
+    topic_id: int,
+    imdb_id: str,
+    torrent: RutrackerTorrentMCPClient | None,
+    rtorrent: RtorrentMCPClient | None,
+    title_cache: TitleCache,
+    movie_meta_cache: MovieMetaCache,
+    state_db: StateDb,
+    admin_user_ids: set[int],
+) -> None:
+    """Fetch the .torrent and push it on — the body of the `tdl:` confirm.
+
+    Split out of the handler so a challenge hand-off can replay it from
+    the «Проверку прошёл» button, whose callback query carries no topic of
+    its own.
+    """
     tg_user_id = cq.from_user.id if cq.from_user else None
 
     if torrent is None or cq.message is None:
@@ -528,7 +572,23 @@ async def on_torrent_confirm(
         code = (err or {}).get("code") if isinstance(err, dict) else None
         if code == "captcha_required":
             await cq.message.answer(t("download.captcha"))
-        elif not await maybe_handle_challenge(cq.message, err, tg_user_id, admin_user_ids):
+        elif not await maybe_handle_challenge(
+            cq.message,
+            err,
+            tg_user_id,
+            admin_user_ids,
+            retry=lambda new_cq: _run_torrent_confirm(
+                new_cq,
+                topic_id,
+                imdb_id,
+                torrent,
+                rtorrent,
+                title_cache,
+                movie_meta_cache,
+                state_db,
+                admin_user_ids,
+            ),
+        ):
             await cq.message.answer(t("download.error", detail=_err_msg(err)))
         return
 
