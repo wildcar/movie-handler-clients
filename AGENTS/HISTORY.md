@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-09-14 · Log handled probe rejections; honest «not a bot» message
+- What: `_probe_and_render` logs `ydl.probe_rejected` (url, error code, first line of the upstream message) for handled `probe` errors; `ydl.youtube_blocked` says the server's YouTube cookies are probably stale and an admin is needed instead of «попробуйте позже».
+- Why: three `youtu.be/XgnBN8BLc-o` attempts produced only «YouTube отклонил запрос сервера» with nothing in the journal — the cause (yt-dlp 2026.03.17 + read-only cookies on `homesrv`) had to be dug out of `mcp_traffic.sqlite` and a manual `health_check`.
+- Files: `telegram/handlers/youtube_url.py`, `core/i18n.py`, `AGENTS/{STATE,HISTORY}.md`.
+- Next: server-side fix is in `yt-dlp-mcp` (update unit, cookies 0660) — apply on `homesrv`.
+
 ## 2026-09-12 · «Проверку прошёл» retry button on the challenge hand-off
 - What: the challenge message gained a second button that replays the interrupted action (`_run_torrent_search`, `_run_torrent_confirm`, `_run_topic_lookup` split out for it); retries park in-process (30 min, single-shot); `manual_auth_required` now says "сессия разлогинена, войдите", not "Cloudflare".
 - Why: after solving Turnstile via VNC there was nothing to press — repeating the request hit the same message, and the login-form screen was mislabelled as a Cloudflare check.

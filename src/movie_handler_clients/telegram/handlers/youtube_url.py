@@ -149,6 +149,16 @@ async def _probe_and_render(
         return
 
     if err := payload.get("error"):
+        # Handled upstream failure (bot check, unsupported URL, …). Log it —
+        # the traffic DB has the full envelope, but the journal is what an
+        # operator reads first, and a silent «попробуйте позже» hid the
+        # 2026-09-14 YouTube «not a bot» rejections for three attempts.
+        log.warning(
+            "ydl.probe_rejected",
+            url=url,
+            code=err.get("code") if isinstance(err, dict) else None,
+            error=(_err_msg(err).splitlines() or [""])[0][:300],
+        )
         await pending.edit_text(t(_probe_error_key(err)))
         return
 

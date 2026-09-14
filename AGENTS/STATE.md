@@ -18,6 +18,11 @@ Telegram today; web (FastAPI+WS) and VK later.
 - Pasted-video errors distinguish unsupported URLs from recognised URLs rejected by
   YouTube anti-bot protection or another upstream extraction failure; download
   confirmation reports a visible error if `start_download` exceeds 45 seconds.
+  Handled probe errors are logged as `ydl.probe_rejected` (url, code, first line of
+  the upstream message) — before 2026-09-14 only the traffic DB had them.
+  `ydl.youtube_blocked` now tells the user the server's YouTube cookies are likely
+  stale and an admin is needed (the fix lives on `homesrv`, see
+  `../yt-dlp-mcp/AGENTS/STATE.md`).
 - MCP sessions are owned by a dedicated task each, so a stale-session reconnect
   from a handler task no longer cancels the bot's main task (that crash-looped the
   process on 2026-07-25). Tool calls carry a read timeout (60 s; 40 s for yt-dlp
