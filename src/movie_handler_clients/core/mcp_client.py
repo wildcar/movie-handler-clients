@@ -144,9 +144,7 @@ class BaseMCPClient:
         self._session_task = task
         self._close_event = close_event
 
-    async def _run_session(
-        self, ready: asyncio.Future[None], close_event: asyncio.Event
-    ) -> None:
+    async def _run_session(self, ready: asyncio.Future[None], close_event: asyncio.Event) -> None:
         """Own the transport stack for the whole life of one session.
 
         The streamable-HTTP transport builds an anyio task group whose cancel
@@ -182,9 +180,7 @@ class BaseMCPClient:
             if not ready.done():
                 ready.set_exception(exc)
             elif not isinstance(exc, asyncio.CancelledError):
-                log.warning(
-                    "mcp.session_lost", url=self._url, name=self._name, error=str(exc)
-                )
+                log.warning("mcp.session_lost", url=self._url, name=self._name, error=str(exc))
         finally:
             # Only disown the session we opened — a newer one may already be live.
             if self._session is session:

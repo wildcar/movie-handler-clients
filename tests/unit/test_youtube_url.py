@@ -148,8 +148,9 @@ def _probe_payload() -> dict:
             "title": "Наперегонки со временем",
             "channel": "Первый канал",
             "duration_seconds": 2820,
-            "thumbnails": [{"url": "https://static.1tv.ru/splash.jpg", "width": 1280,
-                            "height": 720}],
+            "thumbnails": [
+                {"url": "https://static.1tv.ru/splash.jpg", "width": 1280, "height": 720}
+            ],
         }
     }
 

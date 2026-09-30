@@ -37,12 +37,8 @@ class _FakeSettings:
         self.rutracker_challenge_token_path = token_path
 
 
-def _configure(
-    monkeypatch: pytest.MonkeyPatch, base: str | None, token_path: str | None
-) -> None:
-    monkeypatch.setattr(
-        challenge, "get_settings", lambda: _FakeSettings(base, token_path)
-    )
+def _configure(monkeypatch: pytest.MonkeyPatch, base: str | None, token_path: str | None) -> None:
+    monkeypatch.setattr(challenge, "get_settings", lambda: _FakeSettings(base, token_path))
 
 
 @pytest.mark.asyncio

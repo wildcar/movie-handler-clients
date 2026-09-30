@@ -138,8 +138,7 @@ RU: Final[dict[str, str]] = {
     "ydl.fetching": "🔎 Смотрю видео…",
     "ydl.unsupported": "Ссылка не распознана как ссылка на трекер или видео.",
     "ydl.probe_failed": (
-        "Ссылка распознана, но не удалось получить данные видео. "
-        "Попробуйте ещё раз позже."
+        "Ссылка распознана, но не удалось получить данные видео. Попробуйте ещё раз позже."
     ),
     "ydl.internal_error": (
         "Не смог обработать ссылку — внутренняя ошибка. Попробуйте ещё раз позже."
@@ -157,9 +156,7 @@ RU: Final[dict[str, str]] = {
     "ydl.preview_no_channel": "<b>{title}</b>\n{duration}",
     "ydl.confirm_button": "↓ Скачать",
     "ydl.start_failed": "Не удалось поставить на скачивание: {detail}",
-    "ydl.start_timeout": (
-        "Сервер загрузок не ответил вовремя. Попробуйте ещё раз позже."
-    ),
+    "ydl.start_timeout": ("Сервер загрузок не ответил вовремя. Попробуйте ещё раз позже."),
     "ydl.queued": ("↓ Поставил на скачивание: <b>{title}</b>\n/status — посмотреть прогресс"),
     "ydl.live_unsupported": "Прямые трансляции не поддерживаются.",
     "ydl.playlist_header": (
@@ -181,9 +178,7 @@ RU: Final[dict[str, str]] = {
     "admin.global_list_user_header": "👤 <b>{name}</b>",
     "admin.global_list_movie_line": '  • <a href="{url}">{title}</a>',
     "admin.global_list_series_line": '  • <a href="{url}">{title}</a> ({n} серий)',
-    "admin.mcp_down": (
-        "⚠️ Не удалось подключиться к сервису «{name}». Пробую переподключиться…"
-    ),
+    "admin.mcp_down": ("⚠️ Не удалось подключиться к сервису «{name}». Пробую переподключиться…"),
     "admin.mcp_up": "✅ Подключение к сервису «{name}» восстановлено.",
 }
 

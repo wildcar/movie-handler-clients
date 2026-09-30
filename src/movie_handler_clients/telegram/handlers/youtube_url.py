@@ -120,9 +120,7 @@ async def on_url(
         if _PLAYLIST_RE.search(url):
             await _handle_playlist(pending, yt_dlp, url, tg_user_id=tg_user_id)
         else:
-            await _probe_and_render(
-                message, pending, yt_dlp, ydl_cache, url, tg_user_id=tg_user_id
-            )
+            await _probe_and_render(message, pending, yt_dlp, ydl_cache, url, tg_user_id=tg_user_id)
     except asyncio.CancelledError:
         log.warning("ydl.cancelled", url=url)
         raise
