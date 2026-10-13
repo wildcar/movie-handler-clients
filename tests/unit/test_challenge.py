@@ -203,3 +203,56 @@ async def test_logged_out_says_sign_in_not_cloudflare(
     [(text, _markup)] = msg.answers
     assert text.startswith("Сессия rutracker разлогинена")
     assert "парол" in text
+
+
+@pytest.mark.asyncio
+async def test_admin_retry_is_redirected_to_the_requester(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An admin solving a user's challenge replays it in the user's chat."""
+    from datetime import datetime
+
+    from aiogram.types import CallbackQuery, Chat, Message, User
+
+    _configure(monkeypatch, "https://rtcc.example", str(tmp_path / "token"))
+    requester = User(id=7, is_bot=False, first_name="Юзер")
+    admin = User(id=1, is_bot=False, first_name="Админ")
+    origin = Message(
+        message_id=10, date=datetime.now(), chat=Chat(id=7, type="private"), text="card"
+    )
+    sent: list[tuple[int, str]] = []
+
+    class _Bot:
+        async def send_message(self, chat_id: int, text: str, reply_markup: Any = None) -> None:
+            sent.append((chat_id, reply_markup))  # type: ignore[arg-type]
+
+    async def _answer(text: str, reply_markup: Any = None) -> None:
+        pass
+
+    fired: list[Any] = []
+
+    async def _retry(cq: Any) -> None:
+        fired.append(cq)
+
+    # A real Message is frozen; patch the outgoing calls on the class.
+    monkeypatch.setattr(Message, "answer", lambda self, *a, **kw: _answer(*a, **kw))
+    monkeypatch.setattr(Message, "bot", property(lambda self: _Bot()))
+    err = {"code": "cloudflare_challenge", "message": "..."}
+    assert await challenge.maybe_handle_challenge(
+        origin, err, 7, {1}, retry=_retry, requester=requester
+    )
+    [(admin_id, markup)] = sent
+    assert admin_id == 1
+    data = markup.inline_keyboard[1][0].callback_data
+
+    admin_msg = Message(
+        message_id=20, date=datetime.now(), chat=Chat(id=1, type="private"), text="ping"
+    )
+    monkeypatch.setattr(Message, "edit_reply_markup", lambda self, **kw: _answer(""))
+    cq = CallbackQuery(id="q", from_user=admin, chat_instance="x", message=admin_msg, data=data)
+    await challenge.on_challenge_passed(cq)
+
+    [replayed] = fired
+    assert replayed.from_user.id == 7
+    assert replayed.message.chat.id == 7
+    assert replayed.id == "q"  # the admin's spinner is still the one answered

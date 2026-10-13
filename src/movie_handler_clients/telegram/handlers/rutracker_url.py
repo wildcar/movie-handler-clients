@@ -22,7 +22,7 @@ from typing import Any
 
 import structlog
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InaccessibleMessage, Message
+from aiogram.types import CallbackQuery, InaccessibleMessage, Message, User
 
 from ...core.i18n import t
 from ...core.mcp_client import MCPClientError, MovieMetadataMCPClient
@@ -85,6 +85,7 @@ async def on_rutracker_url(
         title_cache,
         movie_meta_cache,
         admin_user_ids,
+        requester=message.from_user,
     )
 
 
@@ -97,6 +98,7 @@ async def _run_topic_lookup(
     title_cache: TitleCache,
     movie_meta_cache: MovieMetaCache,
     admin_user_ids: set[int],
+    requester: User | None = None,
 ) -> None:
     """Topic → candidates → confirm buttons, answering below ``target``.
 
@@ -124,6 +126,7 @@ async def _run_topic_lookup(
             tg_user_id,
             admin_user_ids,
             edit=True,
+            requester=requester,
             retry=lambda new_cq: _retry_topic_lookup(
                 new_cq,
                 topic_id,
@@ -214,7 +217,11 @@ async def _retry_topic_lookup(
     movie_meta_cache: MovieMetaCache,
     admin_user_ids: set[int],
 ) -> None:
-    """Replay the lookup in the chat where «Проверку прошёл» was pressed."""
+    """Replay the lookup below ``cq.message`` on behalf of ``cq.from_user``.
+
+    For a redirected retry (admin solved the challenge for a user) both
+    point at the original requester — see `challenge.on_challenge_passed`.
+    """
     await cq.answer(t("challenge.retrying"))
     if cq.message is None or isinstance(cq.message, InaccessibleMessage):
         return
@@ -227,6 +234,7 @@ async def _retry_topic_lookup(
         title_cache,
         movie_meta_cache,
         admin_user_ids,
+        requester=cq.from_user,
     )
 
 

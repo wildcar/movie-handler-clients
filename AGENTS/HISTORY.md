@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-10-13 · Admin's «Проверку прошёл» replays in the user's chat
+- What: the parked retry now remembers the requester (`User`) and the origin message; when someone else (an admin) presses the button, `on_challenge_passed` replays with the callback query re-addressed (`model_copy`) to the requester and their message, and tells the admin «Запрос повторён у пользователя». Admin ping text updated accordingly.
+- Why: a user hit Cloudflare, the admin solved it and pressed retry — «N раздач, выберите размер и качество» arrived in the admin's chat, the user got nothing.
+- Files: `telegram/challenge.py`, `telegram/handlers/{details,rutracker_url}.py`, `core/i18n.py`, `tests/unit/test_challenge.py`.
+- Next: —
+
 ## 2026-09-14 · Log handled probe rejections; honest «not a bot» message
 - What: `_probe_and_render` logs `ydl.probe_rejected` (url, error code, first line of the upstream message) for handled `probe` errors; `ydl.youtube_blocked` says the server's YouTube cookies are probably stale and an admin is needed instead of «попробуйте позже».
 - Why: three `youtu.be/XgnBN8BLc-o` attempts produced only «YouTube отклонил запрос сервера» with nothing in the journal — the cause (yt-dlp 2026.03.17 + read-only cookies on `homesrv`) had to be dug out of `mcp_traffic.sqlite` and a manual `health_check`.

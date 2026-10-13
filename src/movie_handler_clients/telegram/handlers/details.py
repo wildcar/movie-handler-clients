@@ -371,6 +371,7 @@ async def _run_torrent_search(
             err,
             tg_user_id,
             admin_user_ids,
+            requester=cq.from_user,
             retry=lambda new_cq: _run_torrent_search(
                 new_cq,
                 torrent,
@@ -577,6 +578,7 @@ async def _run_torrent_confirm(
             err,
             tg_user_id,
             admin_user_ids,
+            requester=cq.from_user,
             retry=lambda new_cq: _run_torrent_confirm(
                 new_cq,
                 topic_id,

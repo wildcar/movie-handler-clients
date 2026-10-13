@@ -13,6 +13,11 @@ for, so the hand-off carries a second button — «Проверку прошёл
 replays the very action the challenge interrupted. Callers hand in a
 ``retry`` coroutine factory; it is parked in a short-lived in-process
 registry keyed by a random token that travels in the callback data.
+
+When the challenge hit a regular user, the button is pressed by an admin
+in a different chat — the replay is then redirected back to the user who
+asked: the callback query is re-addressed to their message and identity,
+so results (release lists, download confirmations) land in their chat.
 """
 
 from __future__ import annotations
@@ -31,6 +36,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    User,
 )
 
 from ..core.config import get_settings
@@ -53,10 +59,16 @@ _RETRY_MAX = 32
 
 RetryCallable = Callable[[CallbackQuery], Awaitable[None]]
 
-_retries: OrderedDict[str, tuple[float, RetryCallable]] = OrderedDict()
+_Parked = tuple[RetryCallable, User | None, Message | None]
+
+_retries: OrderedDict[str, tuple[float, _Parked]] = OrderedDict()
 
 
-def _park_retry(retry: RetryCallable) -> str:
+def _park_retry(
+    retry: RetryCallable,
+    requester: User | None = None,
+    origin: Message | None = None,
+) -> str:
     """Store `retry` and return the token that names it in callback data."""
     now = time.monotonic()
     for key, (expires, _) in list(_retries.items()):
@@ -65,17 +77,17 @@ def _park_retry(retry: RetryCallable) -> str:
     while len(_retries) >= _RETRY_MAX:
         _retries.popitem(last=False)
     key = secrets.token_urlsafe(8)
-    _retries[key] = (now + _RETRY_TTL, retry)
+    _retries[key] = (now + _RETRY_TTL, (retry, requester, origin))
     return key
 
 
-def _take_retry(key: str) -> RetryCallable | None:
+def _take_retry(key: str) -> _Parked | None:
     """Pop a parked retry; None when it never existed or has expired."""
     entry = _retries.pop(key, None)
     if entry is None:
         return None
-    expires, retry = entry
-    return retry if expires > time.monotonic() else None
+    expires, parked = entry
+    return parked if expires > time.monotonic() else None
 
 
 def _mint_challenge_url() -> str | None:
@@ -109,6 +121,7 @@ async def maybe_handle_challenge(
     *,
     edit: bool = False,
     retry: RetryCallable | None = None,
+    requester: User | None = None,
 ) -> bool:
     """Turn a challenge error into an admin hand-off button.
 
@@ -124,6 +137,11 @@ async def maybe_handle_challenge(
     action instead of retracing the whole flow by hand. It is called with
     the *new* callback query (the button press), and must therefore reply
     relative to that message rather than to anything captured here.
+
+    ``requester`` is the user whose action hit the challenge. When someone
+    else (an admin in their own chat) presses the retry button, the replay
+    is re-addressed to ``requester`` and ``message`` so it continues in the
+    requester's chat instead of the admin's.
     """
     code = err.get("code") if isinstance(err, dict) else None
     if code not in CHALLENGE_CODES:
@@ -134,7 +152,8 @@ async def maybe_handle_challenge(
 
     rows = [[InlineKeyboardButton(text=t("challenge.button"), url=url)]]
     if retry is not None:
-        key = _park_retry(retry)
+        origin = message if isinstance(message, Message) else None
+        key = _park_retry(retry, requester, origin)
         rows.append(
             [
                 InlineKeyboardButton(
@@ -186,10 +205,11 @@ async def on_challenge_passed(cq: CallbackQuery) -> None:
     The retry owns ``cq.answer`` — see the comment below.
     """
     key = (cq.data or "")[len(RETRY_PREFIX) :]
-    retry = _take_retry(key)
-    if retry is None:
+    parked = _take_retry(key)
+    if parked is None:
         await cq.answer(t("challenge.retry_expired"), show_alert=True)
         return
+    retry, requester, origin = parked
     # The spinner is left for the retry to clear: a callback query takes
     # exactly one answer, and every replayed action opens with its own.
     if cq.message is not None and not isinstance(cq.message, InaccessibleMessage):
@@ -197,5 +217,24 @@ async def on_challenge_passed(cq: CallbackQuery) -> None:
             await cq.message.edit_reply_markup(reply_markup=None)
         except Exception:  # message too old to edit — the retry still runs
             pass
-    log.info("challenge.retry_fired", user_id=cq.from_user.id if cq.from_user else None)
-    await retry(cq)
+    presser_id = cq.from_user.id if cq.from_user else None
+    redirect = requester is not None and origin is not None and requester.id != presser_id
+    log.info(
+        "challenge.retry_fired",
+        user_id=presser_id,
+        requester_id=requester.id if requester else None,
+        redirected=redirect,
+    )
+    if not redirect:
+        await retry(cq)
+        return
+    # Someone else (an admin) solved the challenge on the requester's
+    # behalf: replay as the requester, below their original message, so
+    # the result lands in their chat. `cq.answer` still clears the
+    # presser's spinner — the query id is untouched.
+    if cq.message is not None and not isinstance(cq.message, InaccessibleMessage):
+        try:
+            await cq.message.answer(t("challenge.retried_for_user"))
+        except Exception:
+            pass
+    await retry(cq.model_copy(update={"from_user": requester, "message": origin}))
