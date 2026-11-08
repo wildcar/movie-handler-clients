@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-11-08 · /torrents: progress line instead of lingering confirm buttons
+- What: on «Да, удалить» / «Обновить» the card is replaced at once by «⏳ Удаляю… / Проверяю…» with no keyboard; the result message replaces it.
+- Why: deleting files takes a while and the confirm buttons stayed up, which looked like the tap was lost.
+- Files: `telegram/handlers/torrents.py`, `core/i18n.py`, `tests/unit/test_torrents.py`.
+- Next: —
+
 ## 2026-11-08 · /torrents: manage rtorrent downloads
 - What: new `handlers/torrents.py` — paginated list (admin: all, user: own), card with «Удалить раздачу» / «Удалить вместе с файлами» / «Обновить с трекера»; `state_db.{list_torrent_downloads,replace_download_hash,delete_download}`; clients gain `remove(delete_data)`, `replace_torrent`, `media_watch.delete(purge=)`.
 - Why: users asked to see and clean up their downloads and to pick up updated rutracker releases.

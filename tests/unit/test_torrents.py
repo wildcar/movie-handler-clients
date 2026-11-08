@@ -242,3 +242,22 @@ def test_state_db_torrent_helpers(db: StateDb) -> None:
     db.delete_download(dl.id)
     assert db.get_download_by_hash(H_ALICE) is None
     assert db.list_watch_records(dl.id) == []
+
+
+async def test_delete_with_files_shows_progress_before_removing(db: StateDb) -> None:
+    rt = _rtorrent(ROWS)
+    cq = _cq(f"trt:Dy:{H_ALICE}", ALICE)
+    seen: list[Any] = []
+
+    async def _remove(*_a: Any, **_kw: Any) -> dict[str, Any]:
+        # By the time rtorrent is asked, the confirm buttons must be gone.
+        seen.append(cq.message.edit_text.call_args)
+        return {"ok": True, "deleted_files": 1, "error": None}
+
+    rt.remove.side_effect = _remove
+    await _call(cq, rt, db, media_watch=AsyncMock())
+    (text,), kwargs = seen[0]
+    assert "файлы" in text and kwargs["reply_markup"] is None
+    # Final message replaces the progress line.
+    (final,), _ = cq.message.edit_text.call_args
+    assert "удалена вместе с файлами" in final

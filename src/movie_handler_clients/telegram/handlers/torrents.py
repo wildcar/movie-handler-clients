@@ -349,9 +349,16 @@ async def on_torrents_callback(
             await cq.answer()
         elif op in ("dy", "Dy"):
             await cq.answer(t("torrents.removing"))
+            # Deleting a large payload takes a while: swap the confirm
+            # buttons for a progress line at once, so nobody stares at
+            # «Да, удалить» wondering whether the tap registered (or taps
+            # again).
+            progress = "torrents.removing_data" if op == "Dy" else "torrents.removing_progress"
+            await _edit(message, t(progress, name=_esc(item.name)), None)
             await _remove(message, rtorrent, state_db, media_watch, item, op == "Dy", tg_user_id)
         elif op == "u":
             await cq.answer(t("torrents.updating"))
+            await _edit(message, t("torrents.updating_progress", name=_esc(item.name)), None)
             await _update(
                 cq, message, rtorrent, torrent, state_db, admin_user_ids, item, tg_user_id
             )

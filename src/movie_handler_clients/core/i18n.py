@@ -149,6 +149,12 @@ RU: Final[dict[str, str]] = {
         "перестанут работать. Отменить это нельзя."
     ),
     "torrents.removing": "Удаляю…",
+    "torrents.removing_progress": "⏳ Удаляю раздачу <b>{name}</b>…",
+    "torrents.removing_data": (
+        "⏳ Удаляю раздачу <b>{name}</b> и её файлы…\n\n"
+        "Это может занять минуту, сообщение обновится само."
+    ),
+    "torrents.updating_progress": "⏳ Проверяю торрент <b>{name}</b> на трекере…",
     "torrents.removed": "🗑 Раздача <b>{name}</b> удалена, файлы оставлены.",
     "torrents.removed_data": "🔥 Раздача <b>{name}</b> удалена вместе с файлами ({n} шт.).",
     "torrents.remove_error": "Не удалось удалить раздачу: {detail}",
