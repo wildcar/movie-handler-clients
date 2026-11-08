@@ -116,6 +116,52 @@ RU: Final[dict[str, str]] = {
     "download.season_label": "Сезон {n}",
     "download.season_all": "Все сезоны",
     "download.season_filter_label": "{title} — сезон {season}",
+    "torrents.header": "Ваши раздачи ({n}):",
+    "torrents.header_admin": "Все раздачи в rtorrent ({n}):",
+    "torrents.page": "— стр. {page}/{pages}",
+    "torrents.empty": "Раздач нет.",
+    "torrents.unavailable": "↓ Сервер закачек сейчас недоступен, попробуйте позже.",
+    "torrents.gone": "Этой раздачи больше нет (или она не ваша). Обновите список.",
+    "torrents.refresh": "🔄",
+    "torrents.owner_unknown": "не через бота",
+    "torrents.state.seeding": "раздаётся",
+    "torrents.state.downloading": "качается",
+    "torrents.state.paused": "на паузе",
+    "torrents.state.stopped": "остановлена",
+    "torrents.card.state": "Статус: {state}, скачано {pct}%",
+    "torrents.card.size": "Размер: {size}",
+    "torrents.card.rate": "Скорость: {rate}/с",
+    "torrents.card.owner": "Запустил: {owner}",
+    "torrents.card.topic": '<a href="{url}">Тема на rutracker</a>',
+    "torrents.btn.update": "🔄 Обновить с трекера",
+    "torrents.btn.remove": "🗑 Удалить раздачу",
+    "torrents.btn.remove_data": "🔥 Удалить вместе с файлами",
+    "torrents.btn.back": "← К списку",
+    "torrents.btn.confirm_yes": "Да, удалить",
+    "torrents.btn.cancel": "Отмена",
+    "torrents.confirm_remove": (
+        "Удалить раздачу <b>{name}</b>?\n\nСкачанные файлы останутся, "
+        "ссылки на просмотр продолжат работать."
+    ),
+    "torrents.confirm_remove_data": (
+        "Удалить раздачу <b>{name}</b> <b>вместе со всеми файлами</b>?\n\n"
+        "Будут удалены скачанные и перекодированные файлы, ссылки на просмотр "
+        "перестанут работать. Отменить это нельзя."
+    ),
+    "torrents.removing": "Удаляю…",
+    "torrents.removed": "🗑 Раздача <b>{name}</b> удалена, файлы оставлены.",
+    "torrents.removed_data": "🔥 Раздача <b>{name}</b> удалена вместе с файлами ({n} шт.).",
+    "torrents.remove_error": "Не удалось удалить раздачу: {detail}",
+    "torrents.updating": "Проверяю торрент на трекере…",
+    "torrents.update_unchanged": "Торрент на трекере не изменился.",
+    "torrents.update_done": (
+        "🔄 Торрент на трекере обновился — перезакачал его. Уже скачанное "
+        "используется, докачается только новое."
+    ),
+    "torrents.update_no_topic": (
+        "Не знаю, с какой темы rutracker скачана <b>{name}</b> — обновить не получится."
+    ),
+    "torrents.update_error": "Не удалось обновить раздачу: {detail}",
     "status.header": "Список закачек:",
     "status.no_downloads": "Отслеживаемых закачек нет.",
     "status.not_configured": "↓ Сервер закачек не настроен.",

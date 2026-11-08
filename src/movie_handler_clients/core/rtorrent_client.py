@@ -46,3 +46,22 @@ class RtorrentMCPClient(BaseMCPClient):
         self, hash_: str, *, tg_user_id: int | None = None
     ) -> dict[str, Any]:
         return await self.call_tool("get_download_status", {"hash": hash_}, tg_user_id=tg_user_id)
+
+    async def remove(
+        self, hash_: str, *, delete_data: bool = False, tg_user_id: int | None = None
+    ) -> dict[str, Any]:
+        """Erase from rtorrent; ``delete_data`` also unlinks the payload."""
+        return await self.call_tool(
+            "remove", {"hash": hash_, "delete_data": delete_data}, tg_user_id=tg_user_id
+        )
+
+    async def replace_torrent(
+        self, hash_: str, *, torrent_file_base64: str, tg_user_id: int | None = None
+    ) -> dict[str, Any]:
+        """Swap the download for an updated .torrent; ``changed=False`` when
+        the info-hash is the same."""
+        return await self.call_tool(
+            "replace_torrent",
+            {"hash": hash_, "torrent_file_base64": torrent_file_base64},
+            tg_user_id=tg_user_id,
+        )

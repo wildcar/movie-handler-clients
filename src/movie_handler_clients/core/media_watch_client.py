@@ -96,8 +96,11 @@ class MediaWatchClient:
         ids = body.get("ids") or []
         return [str(i) for i in ids if isinstance(i, str)]
 
-    async def delete(self, record_id: str) -> dict[str, Any]:
-        resp = await self._client().delete(f"/api/records/{record_id}")
+    async def delete(self, record_id: str, *, purge: bool = False) -> dict[str, Any]:
+        """DELETE /api/records/{id}. ``purge`` also drops child records
+        (series episodes ``<id>-sNNeNN``) and unlinks remuxed share mp4s."""
+        params = {"purge": "1"} if purge else None
+        resp = await self._client().delete(f"/api/records/{record_id}", params=params)
         # 404 here is benign — the record was already gone.
         if resp.status_code == 404:
             return {"id": record_id, "deleted": False}

@@ -33,6 +33,7 @@ from .handlers import list as list_handler
 from .handlers import rutracker_url as rutracker_url_handler
 from .handlers import search as search_handler
 from .handlers import status as status_handler
+from .handlers import torrents as torrents_handler
 from .handlers import whoami as whoami_handler
 from .handlers import youtube_url as youtube_url_handler
 from .movie_meta_cache import MovieMetaCache
@@ -502,11 +503,13 @@ async def _run(settings: Settings) -> None:
             ydl_cache=YtDlpCache(),
             state_db=state_db,
             admin_user_ids=admin_user_ids,
+            media_watch=media_watch,
         )
         # Challenge first: its «Проверку прошёл» callback replays whatever
         # the hand-off interrupted, and belongs to no feature router.
         dp.include_router(challenge_router)
         dp.include_router(status_handler.router)
+        dp.include_router(torrents_handler.router)
         dp.include_router(list_handler.router)
         dp.include_router(whoami_handler.router)
         dp.include_router(admin_handler.router)
@@ -524,6 +527,7 @@ async def _run(settings: Settings) -> None:
             BotCommand(command="start", description="Что я умею"),
             BotCommand(command="status", description="Прогресс закачек"),
             BotCommand(command="list", description="Медиатека"),
+            BotCommand(command="torrents", description="Раздачи: удалить, обновить"),
         ]
         admin_commands = [
             *base_commands,

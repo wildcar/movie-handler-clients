@@ -611,6 +611,76 @@ class StateDb:
                 (message, now, _normalise_info_hash(info_hash)),
             )
 
+    def list_torrent_downloads(self, user_id: int | None = None) -> list[tuple[Download, User]]:
+        """rtorrent-backed downloads (everything except yt-dlp) that may still
+        sit in rtorrent's session, with their owner — powers /torrents.
+        ``user_id`` narrows to one user's rows; ``None`` returns everyone's."""
+        sql = """
+            SELECT d.*, u.id AS u_id, u.display_name AS u_display_name,
+                   u.is_admin AS u_is_admin, u.notify_downloads AS u_notify_downloads,
+                   u.created_at AS u_created_at, u.updated_at AS u_updated_at
+              FROM downloads d
+              JOIN users u ON u.id = d.user_id
+             WHERE d.source != 'yt-dlp' AND d.state != 'cancelled'
+        """
+        params: tuple[Any, ...] = ()
+        if user_id is not None:
+            sql += " AND d.user_id = ?"
+            params = (user_id,)
+        with self._tx() as cur:
+            cur.execute(sql + " ORDER BY d.id DESC", params)
+            rows = cur.fetchall()
+        return [
+            (
+                _row_to_download(r),
+                User(
+                    id=int(r["u_id"]),
+                    display_name=str(r["u_display_name"] or ""),
+                    is_admin=bool(r["u_is_admin"]),
+                    notify_downloads=bool(r["u_notify_downloads"]),
+                    created_at=str(r["u_created_at"]),
+                    updated_at=str(r["u_updated_at"]),
+                ),
+            )
+            for r in rows
+        ]
+
+    def replace_download_hash(self, download_id: int, new_info_hash: str) -> None:
+        """Point a download row at a re-fetched torrent (tracker update).
+
+        The row goes back to ``downloading`` so the poller re-registers it
+        once rtorrent has fetched the changes — registration is an idempotent
+        upsert on media-watch, so existing watch links keep working and new
+        episodes get theirs."""
+        new_hash = _normalise_info_hash(new_info_hash)
+        now = _now_iso()
+        with self._tx() as cur:
+            # A stale row may already hold the new hash (e.g. someone added
+            # the updated release by hand) — the unique index would reject
+            # the update, and that row describes the same torrent anyway.
+            cur.execute(
+                "DELETE FROM downloads WHERE info_hash=? AND id != ?", (new_hash, download_id)
+            )
+            cur.execute(
+                """
+                UPDATE downloads
+                   SET info_hash=?,
+                       state='downloading',
+                       state_message='',
+                       register_attempts=0,
+                       updated_at=?
+                 WHERE id=?
+                """,
+                (new_hash, now, download_id),
+            )
+
+    def delete_download(self, download_id: int) -> None:
+        """Forget a download entirely (its watch_records cascade). Used when
+        the payload itself was deleted, so /list must not show it."""
+        with self._tx() as cur:
+            cur.execute("DELETE FROM watch_records WHERE download_id=?", (download_id,))
+            cur.execute("DELETE FROM downloads WHERE id=?", (download_id,))
+
     # --------------------------------------------------------- watch_records
 
     def insert_watch_records(

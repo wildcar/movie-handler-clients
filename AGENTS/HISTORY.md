@@ -5,6 +5,12 @@ cross-repo context lives in `../AGENTS/HISTORY.md`.
 
 ---
 
+## 2026-11-08 · /torrents: manage rtorrent downloads
+- What: new `handlers/torrents.py` — paginated list (admin: all, user: own), card with «Удалить раздачу» / «Удалить вместе с файлами» / «Обновить с трекера»; `state_db.{list_torrent_downloads,replace_download_hash,delete_download}`; clients gain `remove(delete_data)`, `replace_torrent`, `media_watch.delete(purge=)`.
+- Why: users asked to see and clean up their downloads and to pick up updated rutracker releases.
+- Files: `telegram/handlers/torrents.py`, `telegram/bot.py`, `core/{state_db,rtorrent_client,media_watch_client,i18n}.py`, `tests/unit/test_torrents.py`.
+- Next: deploy bot after `rtorrent-mcp` + `media-watch-web` are live on `homesrv`.
+
 ## 2026-10-13 · Admin's «Проверку прошёл» replays in the user's chat
 - What: the parked retry now remembers the requester (`User`) and the origin message; when someone else (an admin) presses the button, `on_challenge_passed` replays with the callback query re-addressed (`model_copy`) to the requester and their message, and tells the admin «Запрос повторён у пользователя». Admin ping text updated accordingly.
 - Why: a user hit Cloudflare, the admin solved it and pressed retry — «N раздач, выберите размер и качество» arrived in the admin's chat, the user got nothing.

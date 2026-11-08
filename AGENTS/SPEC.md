@@ -150,7 +150,8 @@ via `PRAGMA user_version` (current **2**). On a version mismatch the migration d
 
 ## Slash commands & bot menu
 
-`bot.set_my_commands` registers the user menu: `/start`, `/status`, `/list`.
+`bot.set_my_commands` registers the user menu: `/start`, `/status`, `/list`,
+`/torrents`.
 Admins additionally get `/notify_toggle` and `/global_list` via per-chat
 `BotCommandScopeChat`. `/whoami` works but is hidden.
 
@@ -161,6 +162,24 @@ Admins additionally get `/notify_toggle` and `/global_list` via per-chat
 - `/list` — the user library, one row per title (🎬/🎨/📺), each a Telegram
   hyperlink to `/watch/<media_id>`; series collapsed to one line linking to
   `/series/<media_id>`.
+- `/torrents` — manage rtorrent downloads (`handlers/torrents.py`). Admins see
+  every download in rtorrent's session (owner shown, «не через бота» for ones added
+  by hand); users see only their own `state.sqlite` rows (non-yt-dlp, not
+  cancelled) that are still in rtorrent. Paginated list (8/page): name, state,
+  percent; tap → card with three actions, each re-checking ownership:
+  - «Удалить раздачу» → `rtorrent.remove` (files kept); an in-flight row becomes
+    `cancelled`, a registered one stays in `/list`.
+  - «Удалить вместе с файлами» → `rtorrent.remove(delete_data=True)` (server-side
+    path guards), then media-watch `DELETE /api/records/<media_id>?purge=1`
+    (episodes + remuxed share mp4s) — only for downloads the bot owns a row for —
+    and `state_db.delete_download`. Foreign torrents' share files go with the
+    hourly sweep.
+  - «Обновить с трекера» → topic id from `media_id` `rt-N` or the ruTorrent
+    comment URL → `get_torrent_file` → `rtorrent.replace_torrent`; unchanged hash
+    → «не изменился»; changed → `state_db.replace_download_hash` (row back to
+    `downloading`, poller re-registers idempotently). Cloudflare challenges go
+    through the usual hand-off with retry.
+  Both deletions ask for confirmation. Callback data `trt:<op>:<hash|page>`.
 - `/whoami` — user id + admin flag (hidden).
 - `/notify_toggle` (admin) — flip per-admin DM-on-any-completion.
 - `/global_list` (admin) — every user's downloads; chunked to respect Telegram's
@@ -177,8 +196,8 @@ src/movie_handler_clients/
     bot.py      entrypoint: routers, MCP clients + supervisors + admin notifier,
                 set_my_commands, 60 s completion poller + ~hourly prune
     keyboards.py, *_cache.py (search/title/torrent/trailer/movie_meta/ydl)
-    handlers/   search, details, status, list, whoami, admin (notify_toggle/
-                global_list), rutracker_url, youtube_url
+    handlers/   search, details, status, list, torrents, whoami, admin
+                (notify_toggle/global_list), rutracker_url, youtube_url
 deploy/         systemd units (movie-handler-telegram + per-MCP) + update.sh
 tests/          unit/ (handlers, formatters, traffic log, caches, completion flow),
                 integration/ (live Telegram getMe + MCP tools/list, opt-in)
