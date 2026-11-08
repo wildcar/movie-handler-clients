@@ -17,9 +17,8 @@ Telegram today; web (FastAPI+WS) and VK later.
   `/global_list` (admin); `/whoami` (hidden).
 - 2026-11-08: `/torrents` added — list rtorrent downloads (admin: all, user: own),
   remove / remove with files (incl. remuxed copies) / update from rutracker.
-  Needs the matching `rtorrent-mcp` (`remove(delete_data)`, `replace_torrent`) and
-  `media-watch-web` (`?purge=1`) deployed on `homesrv`; until then those actions
-  return a tool error in the chat. `state.sqlite` schema at `user_version=2`.
+  Deployed 2026-11-08 together with `rtorrent-mcp` and `media-watch-web`; the
+  delete/update buttons have not yet been exercised on a real torrent. `state.sqlite` schema at `user_version=2`.
 - Pasted-video errors distinguish unsupported URLs from recognised URLs rejected by
   YouTube anti-bot protection or another upstream extraction failure; download
   confirmation reports a visible error if `start_download` exceeds 45 seconds.
